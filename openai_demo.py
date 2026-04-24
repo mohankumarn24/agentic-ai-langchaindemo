@@ -66,3 +66,30 @@ if __name__ == "__main__":
 
         except Exception as e:
             print("Error:", str(e))
+
+"""
+1. Tab 1 (PowerShell): 
+   cd D:\dev\github\agentic-ai-langchaindemo
+
+   # create venv (only first time)
+   python -m venv venv311
+
+   # allow scripts (only per session)
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+   # activate venv
+   venv311\Scripts\activate
+
+   # install deps (only first time)
+   pip install langchain langchain-openai langchain-ollama
+
+   # start ollama server
+   ollama serve
+
+2. Tab 2 (PowerShell):
+   cd D:\dev\github\agentic-ai-langchaindemo
+   venv311\Scripts\activate
+
+   python openai_demo.py
+
+"""            
