@@ -90,6 +90,7 @@ if __name__ == "__main__":
    cd D:\dev\github\agentic-ai-langchaindemo
    venv311\Scripts\activate
 
-   python openai_demo.py
-
+   cd D:\dev\github\agentic-ai-langchaindemo\s4_langchain-in-action
+   python 1_openai_demo.py
+   
 """            

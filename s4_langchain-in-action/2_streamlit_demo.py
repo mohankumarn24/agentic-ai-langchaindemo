@@ -67,9 +67,11 @@ if question:
    cd D:\dev\github\agentic-ai-langchaindemo
    venv311\Scripts\activate
 
-   python -m streamlit run streamlit_demo.py
-   # python -m streamlit run streamlit_demo.py --logger.level=debug
-   # python -m streamlit run streamlit_demo.py --logger.level=info
+   cd D:\dev\github\agentic-ai-langchaindemo\s4_langchain-in-action
+
+   python -m streamlit run 2_streamlit_demo.py
+   # python -m streamlit run 2_streamlit_demo.py --logger.level=debug
+   # python -m streamlit run 2_streamlit_demo.py --logger.level=info
 
 3. UI:
    http://localhost:8501/  
@@ -130,9 +132,9 @@ ollama serve
 STEP 7: Run Streamlit app
 ------------------------------------------------------------
 # Launches web app in browser (http://localhost:8501/)
-python -m streamlit run streamlit_demo.py
-# python -m streamlit run streamlit_demo.py --logger.level=debug
-# python -m streamlit run streamlit_demo.py --logger.level=info  
+python -m streamlit run 2_streamlit_demo.py
+# python -m streamlit run 2_streamlit_demo.py --logger.level=debug
+# python -m streamlit run 2_streamlit_demo.py --logger.level=info  
 
 ------------------------------------------------------------
 NOTES
@@ -141,6 +143,6 @@ NOTES
 - Use PowerShell (avoid Git Bash for Python apps)
 - Ollama must be running before app execution
 - First run may take time (model loading)
-
 ============================================================
+
 """
