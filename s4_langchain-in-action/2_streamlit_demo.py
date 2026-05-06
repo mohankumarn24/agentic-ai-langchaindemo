@@ -5,30 +5,22 @@ from langchain_ollama import OllamaLLM
 # from langchain_core.globals import set_debug
 # set_debug(True)
 
-# ============================================================
 # Logging Configuration
-# ============================================================
 logging.basicConfig(
     level=logging.DEBUG,  # change to INFO in production
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# ============================================================
 # Initialize LLM
-# ============================================================
 ollama_llm = OllamaLLM(model="tinyllama")
 
-# ============================================================
 # Streamlit UI
-# ============================================================
 st.title("Ask anything")
 # Input box
 question = st.text_input("Enter the question:")
 
-# ============================================================
 # Main Logic. Run only if user enters question
-# ============================================================
 if question:
     logger.debug(f"Received question: {question}")
     try:
@@ -143,6 +135,4 @@ NOTES
 - Use PowerShell (avoid Git Bash for Python apps)
 - Ollama must be running before app execution
 - First run may take time (model loading)
-============================================================
-
 """
