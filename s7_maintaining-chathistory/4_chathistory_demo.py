@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 import uuid
 
 from langchain_openai import ChatOpenAI
@@ -7,7 +6,7 @@ from langchain_ollama import OllamaLLM, ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 
 ## 1. OpenAI Cloud API key
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -57,13 +56,7 @@ chain = (
 )
 
 # Temporary in-memory conversation storage
-# Stores messages inside:
-# st.session_state["chat_messages"]
-history_for_chain = StreamlitChatMessageHistory()
-
-# history_for_chain = StreamlitChatMessageHistory(
-#    key="chat_messages"
-# )
+history_for_chain = ChatMessageHistory()
 
 # Adds conversational memory support to chain
 # Wrapper that automatically:
@@ -87,45 +80,24 @@ chain_with_history = RunnableWithMessageHistory(
 # is same as:
 #   lambda session_id: history_for_chain
 
-# STREAMLIT UI
-st.title("Agile Guide")
+print("Agile Guide")
+session_id = str(uuid.uuid4())
 
-user_input = st.text_input("Enter question:")
-
-## STREAMLIT SESSION ID
-# Streamlit re-runs entire script for every interaction
-# So session_id must be stored in session_state. Otherwise chatbot memory resets every rerun
-# Ex: 
-#       st.session_state = 
-#                   {
-#                       "session_id": "550e8400-e29b-41d4-a716-446655440000" ,
-#                       "key1"      : "value1",
-#                       "key2"      : "value2",
-#                       "key3"      : "value3"
-#                   }
-if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-
-session_id = st.session_state.session_id
-
-if user_input :
-    response = chain_with_history.invoke(
-        {
-            "input":user_input 
-        },
-        {
-            "configurable": 
-                {
-                    "session_id": session_id
-                }
-        }
-    )
-    st.write(response)
-
-## DEBUG MEMORY
-st.subheader("Chat History")
-# Prints stored HumanMessage + AIMessage objects
-st.write(history_for_chain.messages)
+while True:
+    question = input("Enter question: ")
+    if question:
+        response = chain_with_history.invoke(
+            {
+                "input":question 
+            },
+            {
+                "configurable": 
+                    {
+                        "session_id": session_id
+                    }
+            }
+        )
+    print(response)
 
 ## Run:
 # cd D:\dev\github\agentic-ai-langchaindemo
@@ -133,5 +105,4 @@ st.write(history_for_chain.messages)
 # pip show langchain-community
 
 # cd D:\dev\github\agentic-ai-langchaindemo\s7_maintaining-chathistory
-# python -m streamlit run 3_streamlit_chathistory_demo.py
-# http://localhost:8501/   
+# python 4_chathistory_demo.py  

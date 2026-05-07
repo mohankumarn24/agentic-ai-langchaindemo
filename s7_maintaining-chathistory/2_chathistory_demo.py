@@ -39,6 +39,7 @@ prompt_template = ChatPromptTemplate.from_messages(
         # Without this, AI will forget earlier conversation
         # MessagesPlaceholder is used for chat history injection
         MessagesPlaceholder(variable_name="chat_history"),
+        
         (
             "human",
             # Current user question
