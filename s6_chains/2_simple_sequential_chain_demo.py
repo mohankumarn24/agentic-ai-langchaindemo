@@ -51,9 +51,9 @@ def display_title(title):
 # Step 2: Generate speech using generated title     : title -> speech prompt -> LLM -> speech
 # Step 3: Create sequential AI pipeline             : topic -> generated title -> generated speech
 # first_chain  = title_prompt  | llm | StrOutputParser() | (lambda title: (st.write("### Generated Title"), st.write(title), title)[1])
-first_chain  = title_prompt  | llm | StrOutputParser() | (lambda title: (st.write(title), title)[1])
+first_chain = title_prompt | llm | StrOutputParser() | (lambda title: (st.write(title), title)[1])
 second_chain = speech_prompt | llm | StrOutputParser()
-final_chain  = first_chain | second_chain
+final_chain = first_chain | second_chain
 
 # Streamlit UI
 st.title("Speech Generator")

@@ -34,9 +34,9 @@ speech_prompt = PromptTemplate(
 )
 
 # CHAINS (LCEL)
-first_chain  = title_prompt | llm | StrOutputParser() | (lambda title: (st.write(title),title)[1])
+first_chain = title_prompt | llm | StrOutputParser() | (lambda title: (st.write(title),title)[1])
 second_chain = speech_prompt | llm | JsonOutputParser()
-final_chain  = first_chain | (lambda title:{"title": title,"emotion": emotion}) | second_chain
+final_chain = first_chain | (lambda title:{"title": title,"emotion": emotion}) | second_chain
 
 # Streamlit UI
 st.title("Speech Generator")

@@ -9,16 +9,25 @@ from langchain_core.output_parsers import StrOutputParser
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
 
-# Ollama LLM
-llm1 = OllamaLLM(model="tinyllama", temperature=0.2)
-llm2 = OllamaLLM(model="tinyllama", temperature=0.8)
-
 ## Experiment with different LLM combinations:
 ## {Gemini, OpenAI}, {OpenAI, Ollama}, {Ollama, Ollama}
 ## Try different temperatures to observe output variation
-
 # llm1 = OllamaLLM(model="llama3")    # often better for structured reasoning (title generation)
 # llm2 = OllamaLLM(model="mistral")   # often faster and more fluent (speech generation)
+
+# 1. Ollama local LLM's
+# llm1 = OllamaLLM(model="tinyllama", temperature=0.2)
+# llm2 = OllamaLLM(model="tinyllama", temperature=0.8)
+
+# 2. Ollama local & Ollama cloud
+llm_ollamaLocal = OllamaLLM(model="tinyllama", temperature=0.2)
+llm_ollamaCloud = OllamaLLM(
+    model="gpt-oss:20b",
+    base_url="https://ollama.com",
+    headers={
+        "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+    }
+)
 
 # Prompts
 title_prompt = PromptTemplate(
@@ -40,8 +49,24 @@ speech_prompt = PromptTemplate(
 )
 
 # Chains (PURE LOGIC ONLY)
-title_chain = title_prompt | llm1 | StrOutputParser()
-speech_chain = speech_prompt | llm2 | StrOutputParser()
+first_chain = (
+    title_prompt
+    | llm_ollamaLocal
+    | StrOutputParser()
+    | (lambda title: (st.write("Generated Title:"), st.write(title), title)[2])
+)
+
+second_chain = (
+    speech_prompt
+    | llm_ollamaCloud
+    | StrOutputParser()
+)
+
+final_chain = (
+    first_chain
+    | (lambda title: {"title": title})
+    | second_chain
+)
 
 # UI
 st.title("Speech Generator")
@@ -49,17 +74,11 @@ st.title("Speech Generator")
 topic = st.text_input("Enter topic:")
 
 if topic:
-    with st.spinner("Generating title..."):
-        title = title_chain.invoke({"topic": topic})
-
-    st.subheader("Title")
-    st.write(title)
-
-    with st.spinner("Generating speech..."):
-        speech = speech_chain.invoke({"title": title})
-
-    st.subheader("Speech")
-    st.write(speech)
+    response = final_chain.invoke({
+        "topic": topic
+    })
+    st.subheader("Generated Speech")
+    st.write(response)
 
 
 ## Run:
