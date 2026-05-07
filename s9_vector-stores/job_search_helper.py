@@ -7,10 +7,17 @@ from langchain_chroma import Chroma
 
 ## 1. OpenAI Cloud API key
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
+# embedding_model = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
 
-## 2. Ollama local
-llm_ollamaLocal = OllamaEmbeddings(model="nomic-embed-text")
+## 2. Ollama local embedding model
+# Embedding models convert text → vectors
+# Used for:
+#  - semantic search
+#  - vector databases
+#  - RAG retrieval
+embedding = OllamaEmbeddings(model="nomic-embed-text")
+# There is NO LLM in this code currently
+# This code does -> embedding + vector storage + semantic retrieval. NOT answer generation using LLM
 
 # Load text file
 document = TextLoader("job_listings.txt").load()
@@ -28,12 +35,12 @@ chunks = text_splitter.split_documents(document)
 # Store embeddings in Chroma vector database
 #  - Converts text chunks → embeddings/vectors
 #  - Stores vectors for semantic similarity search
-db = Chroma.from_documents(chunks, llm_ollamaLocal)
+db = Chroma.from_documents(chunks, embedding)
 # Add persistent storage: So embeddings persist between runs.
 # Otherwise: embeddings recreated every execution
 #   db = Chroma.from_documents(
 #       chunks,
-#       llm_ollamaLocal,
+#       embedding,
 #       persist_directory="chroma_db"
 #   )
 
