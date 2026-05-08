@@ -1,0 +1,30 @@
+Wikipedia-only trigger
+
+(Factual, timeless, not time-sensitive)
+	1.	Who discovered penicillin?
+	2.	When did World War II end?
+	3.	What is the capital city of Japan?
+	4.	Give me the chemical formula of water.
+	5.	Who is the author of “Pride and Prejudice”?
+
+⸻
+
+DDG-only trigger
+
+(Time-sensitive, news-related, recent events)
+	1.	What’s the latest news about the James Webb Space Telescope?
+	2.	What are today’s top headlines in technology?
+	3.	Show me recent stock market updates for Tesla.
+	4.	What’s trending on social media this week?
+	5.	Any breaking news about the Olympics 2025?
+
+⸻
+
+Likely both tools trigger
+
+(Has both factual & potentially current aspects)
+	1.	Tell me about the current Prime Minister of India.
+	2.	What is SpaceX working on now?
+	3.	Give me details about the FIFA World Cup along with the latest match results.
+	4.	Who is Taylor Swift and what is her latest album?
+	5.	Tell me about the iPhone 16 and its latest launch updates.
