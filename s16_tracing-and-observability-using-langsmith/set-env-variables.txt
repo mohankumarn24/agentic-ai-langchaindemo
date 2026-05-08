@@ -1,0 +1,37 @@
+Setup LangSmith:
+---------------
+1. Login to https://smith.langchain.com/
+2. Generate API Keys
+   - Description: langchaindemo
+   - API key generated: <...>
+
+
+To start using LangSmith we need to set three environment variables:
+- LANGCHAIN_TRACING_V2
+  Enables request tracing so all LangChain and agent executions are logged and visualized in LangSmith for debugging and performance analysis.
+
+- LANGSMITH_API_KEY
+  Authenticates your application with LangSmith so traces, runs, and metadata can be securely sent to your LangSmith account.
+
+- LANGSMITH_PROJECT
+  Groups all traces under a named project in LangSmith, making it easy to organize, filter, and analyze experiments and demos (for example, langchaindemo).
+
+
+
+On Windows:
+----------
+1. Open Start Menu → Search for “Environment Variables” → Click “Edit the system environment variables”
+2. In the System Properties window, click Environment Variables.
+3. Under User variables or System variables, click New.
+4. Add the variables one by one:
+    - Variable Name: LANGCHAIN_TRACING_V2
+    - Value: true
+    - Variable Name: LANGSMITH_API_KEY
+    - Value: your-api-key-here
+    - Variable Name: LANGSMITH_PROJECT
+    - Value: langchaindemo
+
+Note:
+-----
+1. LangChain itself contains tracing hooks
+2. When the above environment variables exist, LangChain automatically activates tracing
