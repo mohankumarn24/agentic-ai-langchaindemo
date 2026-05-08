@@ -1,0 +1,31 @@
+On Windows:
+
+Use the search bar in the Start menu to find “Edit the system environment variables”.
+
+Click “Environment variables”
+
+Use the upper “New…” button to add a User variable
+
+Create a new variable called OPENAI_API_KEY and set the value to the secret key you got from your account.
+
+========================================================
+
+For Mac or Linux:
+
+Find the .bashrc, .bash_profile, or .zshrc in your home directory
+
+Open the file in a text editor
+
+Add a new line to the file:
+
+export OPENAI_API_KEY=<your secret key>
+
+============================================On New Macs
+
+vi .zprofile
+
+export OPENAI_API_KEY=<your secret key>
+
+source .zprofile
+
+Restart your IDE
