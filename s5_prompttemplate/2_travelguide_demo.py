@@ -22,7 +22,7 @@ ollama_llm_cloud = OllamaLLM(
     }
 )
 
-# PromptTemplate: LangChain builds the prompt using variables
+## PromptTemplate: LangChain builds the prompt using variables
 prompt_template = PromptTemplate(
     input_variables=["city", "month", "language", "budget"],
     template="""
@@ -40,7 +40,7 @@ prompt_template = PromptTemplate(
     """
 )
 
-# Streamlit UI
+## Streamlit UI
 st.title("Travel Guide")
 
 city = st.text_input("Enter city")
@@ -48,7 +48,7 @@ month = st.text_input("Enter month of travel")
 language = st.text_input("Enter language")
 budget = st.selectbox("Travel Budget", ["Low", "Medium", "High"])
 
-# Generate
+## Generate
 if city and month and language and budget:
     response = ollama_llm_cloud.invoke(prompt_template.format(city=city,
                                                               month=month,

@@ -1,32 +1,36 @@
 import os
+import streamlit as st
+
 from langchain_openai import ChatOpenAI
 from langchain_ollama import OllamaLLM
-import streamlit as st
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda
 
-# OpenAI LLM
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
-
+## LLM
 ## Experiment with different LLM combinations:
-## {Gemini, OpenAI}, {OpenAI, Ollama}, {Ollama, Ollama}
-## Try different temperatures to observe output variation
-# llm1 = OllamaLLM(model="llama3")    # often better for structured reasoning (title generation)
-# llm2 = OllamaLLM(model="mistral")   # often faster and more fluent (speech generation)
+#     {Gemini, OpenAI}
+#     {OpenAI, Ollama local}
+#     {Ollama local, Ollama local}
+#
 
-# 1. Ollama local LLM's
-# llm1 = OllamaLLM(model="tinyllama", temperature=0.2)
-# llm2 = OllamaLLM(model="tinyllama", temperature=0.8)
-
-# 2. Ollama local & Ollama cloud
-llm_ollamaLocal = OllamaLLM(model="tinyllama", temperature=0.2)
-llm_ollamaCloud = OllamaLLM(
+# See 'Note'
+# Active selection Ollama cloud LLM's
+title_llm = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
         "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    },
+    temperature=0.2
+)
+speech_llm = OllamaLLM(
+    model="gpt-oss:20b",
+    base_url="https://ollama.com",
+    headers={
+        "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+    },
+    temperature=0.8
 )
 
 # Prompts
@@ -34,54 +38,105 @@ title_prompt = PromptTemplate(
     input_variables=["topic"],
     template="""
     You are an experienced speech writer.
-    You need to craft an impactful title for a speech 
-    on the following topic: {topic}
-    Answer exactly with one title.	
+
+    Craft an impactful title for a speech on the following topic:
+    {topic}
+
+    Answer exactly with one title.
     """
 )
 
 speech_prompt = PromptTemplate(
     input_variables=["title"],
     template="""
-    You need to write a powerful speech of 350 words
-    for the following title: {title}
+    Write a powerful speech of around 350 words for the following title:
+
+    {title}
     """
 )
 
-# Chains (PURE LOGIC ONLY)
+## Chains with Streamlit display step
+def display_title(title):
+    st.write("Generated Title:")
+    st.write(title)
+    return title
+
+def title_to_dictionary(title):
+    return {"title": title}
+
 first_chain = (
     title_prompt
-    | llm_ollamaLocal
+    | title_llm
     | StrOutputParser()
-    | (lambda title: (st.write("Generated Title:"), st.write(title), title)[2])
+    | RunnableLambda(display_title)         # Same as: lambda title: (st.write("Generated Title"), st.write(title), title)[2]
 )
 
 second_chain = (
     speech_prompt
-    | llm_ollamaCloud
+    | speech_llm
     | StrOutputParser()
 )
 
 final_chain = (
     first_chain
-    | (lambda title: {"title": title})
+    | RunnableLambda(title_to_dictionary)   # Same as: lambda title: {"title": title}
     | second_chain
 )
 
-# UI
+## UI
 st.title("Speech Generator")
+topic = st.text_input("Enter topic")
 
-topic = st.text_input("Enter topic:")
-
-if topic:
-    response = final_chain.invoke({
-        "topic": topic
-    })
-    st.subheader("Generated Speech")
-    st.write(response)
+## Generate
+if st.button("Generate Speech"):
+    if topic:
+        response = final_chain.invoke({
+            "topic": topic
+        })
+        st.subheader("Generated Speech")
+        st.markdown(response)
+    else:
+        st.warning("Please enter a topic")    
 
 
 ## Run:
 # cd D:\dev\github\agentic-ai-langchaindemo\s6_chains
 # python -m streamlit run 3_multiple_llms_demo.py
 # http://localhost:8501/  
+
+
+## Note
+# Try different temperatures to observe output variation.
+# Temperature:
+#     Lower temperature, e.g. 0.2: More focused, consistent, less creative.
+#     Higher temperature, e.g. 0.8: More creative, varied, expressive.
+# Suggested use:
+#     title generation  -> lower temperature
+#     speech generation -> higher temperature
+
+## 1. Different local Ollama models
+# title_llm  = OllamaLLM(model="llama3" , temperature=0.2)  # often better for structured reasoning/title generation
+# speech_llm = OllamaLLM(model="mistral", temperature=0.8)  # often good for fluent speech generation
+
+## 2. Same local Ollama model with different temperatures
+# title_llm  = OllamaLLM(model="tinyllama", temperature=0.2)
+# speech_llm = OllamaLLM(model="tinyllama", temperature=0.8)
+
+## 3. OpenAI models with different temperatures
+# title_llm  = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+# speech_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.8)
+
+## 4. Mixed LangChain-native setup
+# title_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+# speech_llm = OllamaLLM(model="mistral", temperature=0.8)
+
+## 5. Ollama local & Ollama cloud
+# title_llm = OllamaLLM(model="tinyllama", temperature=0.2)
+# speech_llm = OllamaLLM(
+#     model="tinyllama",
+#     base_url="https://ollama.com",
+#     headers={
+#         "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+#     },
+#     temperature=0.8
+# )

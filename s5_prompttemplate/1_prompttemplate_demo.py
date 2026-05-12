@@ -22,7 +22,7 @@ ollama_llm_cloud = OllamaLLM(
     }
 )
 
-# PromptTemplate: LangChain builds the prompt using variables
+## PromptTemplate: LangChain builds the prompt using variables
 prompt_template = PromptTemplate(
     input_variables=["country", "no_of_paragraphs", "language"],
     template="""
@@ -41,16 +41,16 @@ prompt_template = PromptTemplate(
     """
 )
 
-# Streamlit UI
+## Streamlit UI
 st.title("Cuisine Info")
 
 country = st.text_input("Enter country")
 no_of_paragraphs = st.number_input("Enter number of paragraphs", 
                                    min_value=1, 
                                    max_value=5)
-language = st.text_input("Enter language:")
+language = st.text_input("Enter language")
 
-# Generate
+## Generate
 if country and language:
     
     with st.spinner("Thinking..."):
@@ -58,7 +58,7 @@ if country and language:
                                                                 no_of_paragraphs=no_of_paragraphs,
                                                                 language=language
                                                                 ))
-    st.success("Response: ")
+    st.success("Response:")
     st.write(response)
 
 

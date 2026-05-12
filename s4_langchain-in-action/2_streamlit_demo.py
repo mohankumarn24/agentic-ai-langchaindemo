@@ -32,11 +32,11 @@ ollama_llm_cloud = OllamaLLM(
     }
 )
 
-# Streamlit UI
+## Streamlit UI
 st.title("Ask anything")
 question = st.text_input("Enter the question:")
 
-# Generate
+## Generate
 if question:
     logger.debug(f"Received question: {question}")
     try:
