@@ -1,45 +1,59 @@
 import os
+import streamlit as st
+
 from langchain_openai import ChatOpenAI
 from langchain_ollama import OllamaLLM
-import streamlit as st
 from langchain_core.prompts import PromptTemplate
 
-# OpenAI LLM
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
+## LLM
+# OpenAI cloud api
+# export/setx OPENAI_API_KEY="your_key"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
 
-# Ollama LLM
-llm = OllamaLLM(model="tinyllama")
+# Ollama cloud api
+ollama_llm_local = OllamaLLM(model="tinyllama")
+ollama_llm_cloud = OllamaLLM(
+    model="gpt-oss:20b",
+    base_url="https://ollama.com",
+    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
+        "Authorization":
+            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+    }
+)
 
-# Prompt
+# PromptTemplate: LangChain builds the prompt using variables
 prompt_template = PromptTemplate(
     input_variables=["city", "month", "language", "budget"],
     template="""
-    Welcome to the {city} travel guide!
-    If you're visiting in {month}, here's what you can do:
+    You are a helpful travel guide.
+
+    Create a travel guide for {city} for someone visiting in {month}.
+
+    Include:
     1. Must-visit attractions.
-    2. Local cuisine you must try.
+    2. Local cuisine the traveler should try.
     3. Useful phrases in {language}.
     4. Tips for traveling on a {budget} budget.
-    Enjoy your trip!
+
+    Keep the answer practical, clear, and beginner-friendly.
     """
 )
 
 # Streamlit UI
 st.title("Travel Guide")
 
-city = st.text_input("Enter city:")
+city = st.text_input("Enter city")
 month = st.text_input("Enter month of travel")
-language = st.text_input("Enter language:")
+language = st.text_input("Enter language")
 budget = st.selectbox("Travel Budget", ["Low", "Medium", "High"])
 
 # Generate
 if city and month and language and budget:
-    response = llm.invoke(prompt_template.format(city=city,
-                                                 month=month,
-                                                 language=language,
-                                                 budget=budget
-                                                 ))
+    response = ollama_llm_cloud.invoke(prompt_template.format(city=city,
+                                                              month=month,
+                                                              language=language,
+                                                              budget=budget))
     st.write(response)
 
 
