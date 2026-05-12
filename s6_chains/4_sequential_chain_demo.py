@@ -64,7 +64,7 @@ speech_prompt = PromptTemplate(
     """
 )
 
-## CHAINS (LCEL)
+## ## LCEL chains
 def display_title(title):
     st.write("Generated Title:")
     st.write(title)

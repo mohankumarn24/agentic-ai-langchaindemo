@@ -9,144 +9,197 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-## 1. OpenAI Cloud API key
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
+## LLM
+# OpenAI cloud api
+# export/setx OPENAI_API_KEY="your_key"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
 
-## 2. Ollama local
-llm_ollamaLocal = OllamaLLM(model="tinyllama")
-
-## 3. Ollama cloud API key
-llm_ollamaCloud = ChatOllama(
+# Ollama cloud api
+ollama_llm_local = ChatOllama(model="tinyllama")
+ollama_llm_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={
-        "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
+        "Authorization":
+            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
     }
 )
 
-## PROMPT TEMPLATE
-prompt_template = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            # Defines AI behavior/personality
-            "You are an Agile Coach. "
-            "Answer questions related to Agile process clearly."
-        ),
+## Prompt template: creates the final message structure sent to the LLM
+# It has 3 parts - System message, Previous chat history, Current human question
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", "You are a Scrum Coach. Answer questions related to Scrum clearly."),            # Defines AI behavior/personality/context
+    MessagesPlaceholder(variable_name="chat_history"),                                          # "POSITION where old messages are inserted"
+                                                                                                # Previous chat history gets inserted here
+                                                                                                # Ex:
+                                                                                                # [
+                                                                                                #     HumanMessage(content="Explain Scrum"),
+                                                                                                #     AIMessage(content="Scrum is an Agile framework..."),
+                                                                                                #
+                                                                                                #     HumanMessage(content="Summarize this"),
+                                                                                                #     AIMessage(content="Scrum is a lightweight Agile framework...")
+                                                                                                # ]
+    ("human","{input}")                                                                         # Current user question
+])
 
-        # Previous chat history gets inserted here
-        # Without this, AI will forget earlier conversation
-        # MessagesPlaceholder is used for chat history injection
-        MessagesPlaceholder(variable_name="chat_history"),
-        
-        (
-            "human",
-            # Current user question
-            "{input}"
-        )
-    ]
-)
+## LCEL chain
+chain = prompt_template | ollama_llm_cloud | StrOutputParser()
 
-# LCEL CHAIN
-# chain = prompt_template | llm_ollamaLocal | StrOutputParser()
-chain = prompt_template | llm_ollamaCloud | StrOutputParser()
+## Temporary in-memory conversation storage.
+#  Stores previous user + AI messages temporarily.
+#  Each session_id gets its own chat memory.
+#
+# Initially empty:
+#       {}
+#
+# Later:
+#    {
+#       "session-1": InMemoryChatMessageHistory([HumanMessage(content="What is Scrum?"), AIMessage(content="Scrum is an Agile framework...")]),
+#       "session-2": InMemoryChatMessageHistory([HumanMessage(content="Who is Scrum Mster?"), AIMessage(content="Scrum Master is...")]),
+#    }
 
-# Temporary in-memory conversation storage
-# Stores previous user + AI messages temporarily. Initially empty ie., []
-"""
-[
-    HumanMessage(content="Explain Scrum"),
-    AIMessage(content="Scrum is an Agile framework..."),
+store = {}
+def get_history(session_id):
+    if session_id not in store:
+        # New session_id -> create new chat memory
+        store[session_id] = InMemoryChatMessageHistory()            # LangChain memory object that stores messages in normal Python memory
+                                                                    # When the program stops, memory is gone
 
-    HumanMessage(content="Summarize this"),
-    AIMessage(content="Scrum is a lightweight Agile framework...")
-]
-"""
-history_for_chain = InMemoryChatMessageHistory()
+    # Existing session_id -> return existing chat memory
+    return store[session_id]
 
-# Adds conversational memory support to chain
-# Wrapper that automatically:
-#  - Retrieves old messages
-#  - Injects memory into prompt
-#  - Stores latest conversation
+## Adds conversational memory support to the chain.
+#  RunnableWithMessageHistory is a wrapper that automatically:
+#     1. Gets old messages using get_history(session_id)
+#     2. Inserts them into MessagesPlaceholder(variable_name="chat_history")
+#     3. Sends current input to the model
+#     4. Stores current user question and AI response back into history
+
+## Preparation happens here
+# Create a wrapper around chain.
+# Tell wrapper:
+#    - use get_history to fetch memory
+#    - current input key is "input"
+#    - history placeholder key is "chat_history"
+
 chain_with_history = RunnableWithMessageHistory(
-    # Original LCEL chain
-    chain,
+    chain,                                          # Original LCEL chain
 
-    # Function that returns chat history object
-    #  - session_id helps separate conversations
-    #  - Different session_id -> different chat history
-    lambda session_id: history_for_chain,
+    get_history,                                    # "WHERE to get/store history"
+                                                    # session_id: "WHICH conversation memory to use"
+                                                    # This tells RunnableWithMessageHistory where to get the history from.
+                                                    # RunnableWithMessageHistory reads the session_id from config and internally calls: get_history(session_id)
+                                                    # session_id helps separate conversations:
+                                                    #     Same session_id      -> same chat history
+                                                    #     Different session_id -> different chat history
+                                                    # get_history(session_id):
+                                                    #     Returns existing history for session_id if present.
+                                                    #     Otherwise creates a new InMemoryChatMessageHistory.
 
-    # The current user question is stored inside dictionary key called "input"
-    # invoked inside 'chain_with_history.invoke' ie ' "input": question '
-    input_messages_key="input",
+    input_messages_key="input",                     # "WHERE to read current user input"
+                                                    # The current user question is inside the dictionary key called "input".
+                                                    # Example:
+                                                    #     chain_with_history.invoke(
+                                                    #         {"input": question},
+                                                    #         config={...}
+                                                    #     )
 
-    # Variable name used in MessagesPlaceholder
-    # Inject old conversation messages into variable called "chat_history"
-    # Because prompt contains: MessagesPlaceholder(variable_name="chat_history")
-    history_messages_key="chat_history"
+    history_messages_key="chat_history"             # "WHERE to put history inside the prompt"
+                                                    # Put previous messages into the prompt variable called "chat_history"          
+                                                    # Must match MessagesPlaceholder(variable_name="chat_history").
+                                                    # Old conversation messages are injected into: chat_history.
 )
+                                                    ## The model receives below info when second question is asked:
+                                                    # System:
+                                                    # You are a Scrum Coach...
+                                                    # 
+                                                    # Chat history:
+                                                    # Human: What is Scrum?
+                                                    # AI: Scrum is a lightweight Agile framework...
+                                                    # 
+                                                    # Human:
+                                                    # Summarize this in one sentence
 
-#   def get_history(session_id):
-#        return history_for_chain
-# 
-# is same as:
-#   lambda session_id: history_for_chain
-
-print("Agile Guide")
-
+## Generate
+print("Scrum Guide")
 session_id = str(uuid.uuid4())
 while True:
-    # Debugging: Prints stored conversation memory: (previous HumanMessage + AIMessage objects)
-    # print(history_for_chain.messages)
+    # Debugging: 
+    # Prints stored conversation memory: 
+    #   (previous HumanMessage + AIMessage objects)
+    # 
+    # print(get_history(session_id).messages)
 
-    question = input("\nEnter the question: ")
-
+    question = input("\nEnter question related to Scrum: ")
     if question.lower() == "exit":
         print("\nExiting chatbot. Good Bye!!")
         break
 
     if question:
-        # invoke() executes the chain
+        # Execution happens here
         response = chain_with_history.invoke(
-            # Current user input
             {
-                "input": question
+                "input": question                   # Current user input
             },
-
-            # Runtime configuration
             {
-                "configurable": 
+                "configurable":                     # Runtime configuration
                 {
-                    # Unique conversation/session identifier
-                    #  - Same session_id       -> remembers old chat
-                    #  - Different session_id  -> fresh conversation
-                    "session_id": session_id
-                    # "session_id": "abc123"
+                    "session_id": session_id        # Same session_id -> same chat history
+                                                    # Different session_id -> fresh/separate conversation.
                 }
             }
         )
-
         print("\nAI Response:")
         print(response)
         print("-" * 50)
+
+
+## Flow:
+# 1. RunnableWithMessageHistory wraps the original LCEL chain.
+# 2. When chain_with_history.invoke(...) is called, execution starts.
+# 3. It reads session_id from config["configurable"]["session_id"].
+# 4. It calls get_history(session_id) to get the correct chat history.
+# 5. It reads the current user question from the input_messages_key, i.e., "input".
+# 6. It inserts old messages into MessagesPlaceholder(variable_name="chat_history").
+# 7. It inserts the current question into ("human", "{input}").
+# 8. It executes the original chain:
+#        prompt_template -> ollama_llm_cloud -> StrOutputParser
+# 9. After the AI response is generated, it stores the new HumanMessage and AIMessage.
+# 10. It returns the final response.
+
+
 
 ## Run:
 # cd D:\dev\github\agentic-ai-langchaindemo\s7_maintaining-chathistory
 # python 2_chathistory_demo.py
 # http://localhost:8501/          
 
-# First input   : Explain scrum
-# First output  : Scrum is a lightweight, evidence‑based framework for building complex products. It focuses on ...
+# After enabling RunnableWithMessageHistory:
+#
+# Round 1:
+#     Human: what is scrum
+#     AI   : Scrum is a lightweight Agile framework...
+#
+# Round 2:
+#     Human: summarize in one sentence
+#     AI   : Summarizes the previous Scrum explanation
+#
+# Why it works:
+#     RunnableWithMessageHistory stores previous HumanMessage + AIMessage objects.
+#     MessagesPlaceholder(variable_name="chat_history") injects those old messages
+#     into the next LLM call.
+#
+# So the second question can refer to "this" or "summarize" because the model
+# receives the previous conversation context.
 
-# Second input  : can you summarise this in two sentences
-# second output : Scrum is an evide... It uses...
 
 
-## Real output after enabling debugging:
-# [HumanMessage(content='what is scrum', additional_kwargs={}, response_metadata={}), 
-# AIMessage(content='### Scrum – the Agile framework that turns chaos into predictability\n\n> *Scrum is a lightweight, iterative approach to complex product development. It helps teams deliver value faster, learn quickly, and stay aligned with customer needs.*\n\n---\n\n## 1. Why Scrum?  \n| Problem | Scrum Solution |\n|---------|----------------|\n| **Unclear vision & scope** | Sprint Planning & Product Backlog give incremental direction. |\n| **Long, opaque development cycles** | Short sprints (1–4\u202fweeks) and fixed cadence deliver early, measurable results. |\n| **Poor communication** | Daily Scrum & reviews keep everyone on the same page. |\n| **Slow responses to change** | Incremental delivery + frequent retrospectives embed learning and adaptation. |\n\n---\n\n## 2. Core Ingredients\n\n| Element | What it is | Key Benefit |\n|---------|------------|-------------|\n| **Roles** | • **Product Owner** – owns the vision & prioritizes the backlog.<br>• **Scrum Master** – facilitator & servant leader.<br>• **Development Team** – cross‑functional, self‑organizing. | Clear responsibilities, reduced friction. |\n| **Artifacts** | • **Product Backlog** – dynamic, ordered list of everything needed. <br>• **Sprint Backlog** – work committed for the sprint. <br>• **Increment** – usable, potentially shippable deliverable. | Transparent progress, focused scope, measurable value. |\n| **Events** | • **Sprint Planning** – set goal & plan tasks.<br>• **Daily Scrum** – inspect, adapt, coordinate.<br>• **Sprint Review** – show the Increment, gather feedback.<br>• **Sprint Retrospective** – learn & improve. | Structured rhythm, regular feedback loops. |\n| **Definition of Done (DoD)** | A shared checklist of what “done” means for the team. | Quality and predictability. |\n\n---\n\n## 3. The Scrum Lifecycle (simplified)\n\n```mermaid\nflowchart TD\n  PB[[Product Backlog]]\n  PPlanning([Sprint Planning]) --> SB([Sprint Backlog])\n  SB --> DSS([Daily Scrum]) --> Devs[Development]\n  Devs --> SR([Sprint Review]) --> PR([Sprint Retrospective])\n  PR --> PB\n```\n\n1. **Product Owner** refines the backlog → **Sprint Planning** sets sprint goal & commits items → **Daily Scrums** keep the team coordinated → Working **Increment** delivered → **Sprint Review** + **Retrospective** produce learnings → Loop.\n\n---\n\n## 4. Scrum in Practice\n\n| Common Tool | How to Use It |\n|-------------|---------------|\n| **Kanban Board** | Visualize backlog items (To Do → In Progress → Done). |\n| **Story Points** | Estimate effort relative to others (instead of hours). |\n| **Velocity** | Measure average points completed per sprint; helps forecasting. |\n| **Burndown / Burnup Chart** | Track sprint progress; highlights risks early. |\n\n---\n\n## 5. Typical Questions\n\n| Question | Short Answer |\n|----------|--------------|\n| *What’s the difference between Scrum and Kanban?* | Scrum has time‑boxed sprints and prescribed roles; Kanban is continuous, no defined cadence. |\n| *Can non‑software teams use Scrum?* | Yes – the core concepts (roles, ceremonies, incremental value) apply to any complex work. |\n| *Is Scrum rigid?* | No – its lightweight structure adapts; teams tailor ceremonies and artifacts to fit context while preserving transparency. |\n| *How do you start a new Scrum team?* | 1. Get a single, cross‑functional team. 2. Assign roles. 3. Create an initial Product Backlog. 4. Run your first Sprint Planning and Sprint. 5. Iterate and refine. |\n\n---\n\n## 6. Quick Reference Cheat‑Sheet\n\n| **Ceremony** | **Timebox** | **Purpose** |  \n|--------------|------------|-------------|  \n| Sprint Planning | 2–4\u202fhrs per 1‑month sprint | Define sprint goal & select backlog items. |  \n| Daily Scrum | 15\u202fmin | Inspect progress, adapt plan, coordinate. |  \n| Sprint Review | 1–2\u202fhrs | Inspect Increment with stakeholders, gather feedback. |  \n| Sprint Retrospective | 1–2\u202fhrs | Reflect on process, identify improvements. |  \n\n---\n\n**Bottom line:**  \nScrum is a *structured, evidence‑based framework* that transforms complex product work into short, transparent iterations. By empowering teams to plan, inspect, and adapt continuously, it delivers higher quality, faster time‑to‑market, and a better alignment with customer value. 🚀', additional_kwargs={}, response_metadata={}, tool_calls=[], invalid_tool_calls=[]), 
-# HumanMessage(content='summarize in one sentence', additional_kwargs={}, response_metadata={}), 
-# AIMessage(content='Scrum is a lightweight, iterative Agile framework that uses a fixed‑length Sprint, clearly defined roles, tangible artifacts, and regular ceremonies to deliver valuable increments, foster continuous improvement, and maintain transparent, cross‑functional collaboration.', additional_kwargs={}, response_metadata={}, tool_calls=[], invalid_tool_calls=[])]
+## Stored chat history:
+#   [
+#       HumanMessage(content="what is scrum"),
+#       AIMessage(content="long Scrum explanation..."),
+#   
+#       HumanMessage(content="summarize in one sentence"),
+#       AIMessage(content="short Scrum summary...")
+#   ]

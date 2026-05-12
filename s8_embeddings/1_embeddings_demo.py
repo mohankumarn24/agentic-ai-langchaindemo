@@ -3,50 +3,66 @@ import os
 from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 
-## 1. OpenAI Cloud API key
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
+## Embedding Models
+# OpenAI cloud embedding api
+# export/setx OPENAI_API_KEY="your_key"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
 
-## 2. Ollama local
-llm_ollamaLocal = OllamaEmbeddings(model="nomic-embed-text")
+# Ollama local embedding
+# Uses an embedding model to convert text into numerical vectors
+ollama_embeddings_local  = OllamaEmbeddings(model="nomic-embed-text")
 
-## 3. Ollama cloud API key
-# This didn't work. So upgraded langchain-ollama -> "pip install -U langchain-ollama"
-# llm_ollamaCloud = OllamaEmbeddings(
+# Ollama cloud embedding
+# This didn't work initially, so upgraded langchain-ollama:
+#     pip install -U langchain-ollama
+#
+# ollama_embeddings_cloud = OllamaEmbeddings(
 #     model="nomic-embed-text",
 #     base_url="https://ollama.com",
 #     headers={
 #         "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
 #     }
 # )
+#
+# 401 Unauthorized may mean the API key/account does not have permission for this endpoint/model.
+#
+# ollama_embeddings_cloud = OllamaEmbeddings(
+#     model="nomic-embed-text",
+#     base_url="https://ollama.com",
+#     client_kwargs={
+#         "headers": {
+#             "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+#         }
+#     }
+# )
 
-# Some 401 issue. Seems like my account doesn't has permissions
-llm_ollamaCloud = OllamaEmbeddings(
-    model="nomic-embed-text",
-    base_url="https://ollama.com",
-    client_kwargs={
-        "headers": {
-            "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-        }
-    }
-)
+## Embeddings
+# Embeddings convert text into numerical vectors.
+# Embeddings help AI understand how similar or related different words/sentences are.
+# They represent text based on semantic meaning and relationships with other text.
+#
+# Similar meaning   -> vectors are close.
+# Different meaning -> vectors are far apart.
+#
+# LLM:
+#     Generates text.
+#
+# Embedding model:
+#     Generates vectors.
 
-# What are Embeddings?
-# Embeddings help AI understand how similar or related different words and sentences are.
-# They represent text as numerical vectors based on semantic meaning and relationships with other words/texts.
-# Similar meanings    -> similar vectors
-# Different meanings  -> distant vectors
-
+## Generate embedding
 text = input("Enter text: ")
-response = llm_ollamaLocal.embed_query(text)
-print(response)
-
-
+response = ollama_embeddings_local.embed_query(text)            # Converts one text string into one vector
+print(response)                                                 # List of floating-point numbers representing semantic meaning.
+print("Vector size:", len(response))
 
 
 ## Note
 # gpt-oss:20b       -> chat/generation model
-# nomic-embed-text  -> embedding/vector model
+# gpt-4o-mini       -> chat/generation model
+# text-embedding-*  -> OpenAI embedding/vector model
+# nomic-embed-text  -> Ollama embedding/vector model
 
 
 ## Run:
@@ -59,4 +75,3 @@ print(response)
 #
 # cd D:\dev\github\agentic-ai-langchaindemo\s8_embeddings
 # python 1_embeddings_demo.py
-
