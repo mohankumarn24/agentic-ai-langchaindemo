@@ -12,7 +12,7 @@ openai_embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPE
 
 # Ollama local embedding
 # Uses an embedding model to convert text into numerical vectors
-ollama_embeddings_local  = OllamaEmbeddings(model="nomic-embed-text")
+ollama_embeddings_local = OllamaEmbeddings(model="nomic-embed-text")
 
 # Ollama cloud embedding
 # 401 Unauthorized may mean the API key/account does not have permission for this endpoint/model.
