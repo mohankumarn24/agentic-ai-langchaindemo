@@ -3,6 +3,57 @@ import wikipedia
 from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
 
+# =========================================================
+# MCP OVERVIEW
+# =========================================================
+# MCP means Model Context Protocol.
+#
+# Simple meaning:
+#   MCP is a standard way for an AI model/agent to connect to external tools, data, and services.
+#
+# IN THIS PROJECT
+# ---------------------------------------------------------
+# 1. MCP SERVER
+#    - Exposes normal Python functions as tools.
+#    - Example:
+#          @mcp.tool()
+#          def wikipedia_search(query: str) -> str:
+#              ...
+#
+#    - This means the function can be called by an MCP client.
+#    - In our server, we expose:
+#          wikipedia_search
+#          ddg_search
+#
+#
+# 2. MCP CLIENT
+#    - Connects to the MCP server.
+#    - Fetches the tools exposed by the server.
+#    - Example:
+#          client_streamable = MultiServerMCPClient(...)
+#          tools = asyncio.run(client_streamable.get_tools())
+#
+#    - The MCP client asks:
+#          "What tools do you provide?"
+#
+#    - The MCP server responds:
+#          "I provide wikipedia_search and ddg_search."
+#
+#    - Then we pass those tools to the AI agent:
+#          agent = create_agent(llm, tools)
+#
+#    - This gives the AI agent access to external tools.
+#
+#
+# TRANSPORT
+# ---------------------------------------------------------
+# Transport decides how client and server communicate.
+#
+# Meaning:
+#   streamable-http = network/HTTP style connection
+#   stdio           = direct process pipe connection
+# =========================================================
+
 # Create an MCP server to expose tools
 mcp = FastMCP(name="Tool Server")
 
@@ -96,3 +147,7 @@ if __name__ == "__main__":
 # LLM creates final answer
 #         ↓
 # Streamlit displays response
+
+
+
+

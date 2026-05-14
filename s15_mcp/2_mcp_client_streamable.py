@@ -70,3 +70,21 @@ if ask_button and task:
 ## Force to use Wikipedia or DDG search
 # Q: Use wikipedia_search tool. Who is the author of Pride and Prejudice?
 # Q: Use ddg_search tool. Search latest news about OpenAI.
+
+
+
+# Simple flow:
+#
+# User asks question
+#       ↓
+# AI agent receives question
+#       ↓
+# Agent decides whether a tool is needed
+#       ↓
+# Agent calls MCP tool
+#       ↓
+# MCP server runs the Python function
+#       ↓
+# Tool result returns to agent
+#       ↓
+# Agent gives final answer
