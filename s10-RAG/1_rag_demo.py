@@ -17,7 +17,8 @@ from langchain_ollama import OllamaEmbeddings, ChatOllama
 # 1. EMBEDDING MODEL (using Ollama local)
 #    Purpose: Understand/search text
 # =========================================================
-# Converts text into vectors (embeddings)
+# Embedding model converts text into vectors (embeddings)
+# These vectors are used for semantic search
 # Embeddings capture semantic meaning. Similar meaning → vectors close together
 #
 # Example:
@@ -32,7 +33,7 @@ embeddings = OllamaEmbeddings(model="nomic-embed-text")
 # 2. LLM (GENERATION MODEL) (using Ollama cloud)
 #    Purpose: Generate final answer
 # =========================================================
-# Used to generate final answer from retrieved context
+# LLM generates the final answer using retrieved context
 
 # embeddings = OllamaEmbeddings(model="nomic-embed-text")    # Use Ollama local embeddings instead (because getting 401 unauthorized in this setup/account)
 llm = ChatOllama(
@@ -54,7 +55,8 @@ document = TextLoader("product-data.txt", encoding="utf-8").load()
 # =========================================================
 # 4. SPLIT DOCUMENT INTO CHUNKS
 # =========================================================
-# Large documents are split into smaller chunks for better retrieval accuracy
+# Large documents are split into smaller chunks
+# chunk_overlap keeps some context between chunks
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -66,6 +68,8 @@ chunks = text_splitter.split_documents(document)
 # =========================================================
 # 5. CREATE VECTOR DATABASE FOR SEMANTIC SEARCH
 # =========================================================
+# Chroma stores embeddings and allows semantic search
+# 
 # Internally:
 # chunk -> embedding vector -> store in Chroma
 #
@@ -76,11 +80,35 @@ chunks = text_splitter.split_documents(document)
 
 vector_store = Chroma.from_documents(chunks, embeddings)    # Vector database. Stores embeddings for similarity search
 
+# persist_directory saves the vector DB locally. So embeddings are not recreated every time.
+
+# PERSIST_DIR = "./chroma_db"
+# 
+# if os.path.exists(PERSIST_DIR):
+#     vector_store = Chroma(
+#         persist_directory=PERSIST_DIR,
+#         embedding_function=embeddings
+#     )
+# else:
+#     vector_store = Chroma.from_documents(
+#         documents=chunks,
+#         embedding=embeddings,
+#         persist_directory=PERSIST_DIR
+#     )
+
+
 
 # =========================================================
 # 6. CREATE RETRIEVER
 # =========================================================
 # Retriever performs semantic search on vector DB later
+#
+# Retriever searches the vector DB and returns relevant chunks
+# k=3 means return top 3 most relevant chunks.
+# 
+#   retriever = vector_store.as_retriever(
+#       search_kwargs={"k": 3}
+#   )
 #
 # Question -> Convert to embedding -> Find relevant chunks from vector DB -> Return relevant chunks
 # Ex: "What is battery life?"
@@ -146,6 +174,8 @@ prompt_template = ChatPromptTemplate.from_messages(
 # =========================================================
 # "Stuff" means: Retrieved chunks are stuffed directly into prompt context, then sent to LLM
 #
+# Stuff chain inserts all retrieved chunks into the prompt
+# 
 # Ask LLM using retrieved chunks + question to generate answer
 #   Example final prompt:
 #       Context:
@@ -166,19 +196,13 @@ qa_chain = create_stuff_documents_chain(llm, prompt_template)
 
 # =========================================================
 # 9. CREATE RAG PIPELINE
+#    RAG chain = retriever + QA chain
+#    Question -> Retriever -> Relevant chunks -> LLM -> Answer
 # =========================================================
 # Full runtime flow:
 #  - retriever: Question -> Find relevant chunks from vector DB -> Return documents
 #  - qa_chain : Retrieved chunks + Question -> Build prompt -> Send to LLM -> LLM generates final answer 
 #
-# Equivalent mental model:
-#   def rag_chain(question):
-#       docs = retriever(question)
-#       answer = qa_chain(question, docs)
-#       return answer
-rag_chain = create_retrieval_chain(retriever, qa_chain)         # search vector store and fetch relevant chunks for the given 'input'
-                                                           
-
 # 1. retriever = vector_store.as_retriever()
 #    Equivalent mental model:
 #    def retriever(question):
@@ -199,10 +223,11 @@ rag_chain = create_retrieval_chain(retriever, qa_chain)         # search vector 
 # 3. rag_chain = create_retrieval_chain(retriever, qa_chain)
 #    Equivalent mental model:
 #    def rag_chain(question):
-#       docs = retriever(question)
-#       answer = qa_chain(question, docs)
-#       return answer
-
+#       relevant_docs = retriever(question)
+#       llm_answer = qa_chain(question, relevant_docs)
+#       return llm_answer
+rag_chain = create_retrieval_chain(retriever, qa_chain)         # search vector store and fetch relevant chunks for the given 'input'
+                                                           
 
 # =========================================================
 # 10. ASK QUESTIONS
@@ -211,21 +236,52 @@ print("Chat with Document")
 question = input("Your Question: ")
 
 if question:
+    # ========================================================
+    # WHAT rag_chain.invoke({"input": question}) DOES INTERNALLY
+    # ========================================================
+    #
+    # rag_chain is an orchestrator.
+    # It combines:
+    #
+    #   1. retriever
+    #      - searches Chroma
+    #      - returns relevant document chunks
+    #
+    #   2. qa_chain
+    #      - takes retrieved chunks + user question
+    #      - puts them into the prompt template
+    #      - sends final prompt to LLM
+    #      - returns final answer
+
     # Hidden internal flow:
     #   rag_chain.invoke({"input": question})
     # 
     # Internally becomes roughly:
-    #   retrieved_docs = retriever.invoke(question)
-    #   answer = qa_chain.invoke({
-    #       "context": retrieved_docs,
-    #       "input": question
-    #   })
+    #   def rag_chain_invoke(inputs):
+    #       question = inputs["input"]
+    #   
+    #       # STEP 1: Retrieve relevant chunks from vector DB
+    #       retrieved_docs = retriever.invoke(question)
+    #   
+    #       # STEP 2: Send question + retrieved chunks to LLM chain
+    #       answer = qa_chain.invoke({
+    #           "context": retrieved_docs,
+    #           "input": question
+    #       })
+    #   
+    #       # STEP 3: Return complete response
+    #       return {
+    #           "input": question,
+    #           "context": retrieved_docs,
+    #           "answer": answer
+    #       }
+    
     response = rag_chain.invoke(
         {
             "input": question
         }
     )
-    print("\nAnswer:")
+    print("\nAnswer: ")
     print(response['answer'])
 
 
