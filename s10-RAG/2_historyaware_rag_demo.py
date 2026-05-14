@@ -33,9 +33,39 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 # Example:
 # "I love Java"
 # -> [0.123, -0.553, 0.991, ...]
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text"
-)
+
+## TODO: Temporary fix by caching to avoid cpu stress
+# Issue occurs only if we use streamlit
+@st.cache_resource
+def create_retriever():
+    embeddings = OllamaEmbeddings(
+        model="nomic-embed-text"
+    )
+
+    document = TextLoader(
+        "product-data.txt",
+        encoding="utf-8"
+    ).load()
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+
+    chunks = text_splitter.split_documents(document)
+
+    vector_store = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings
+    )
+
+    retriever = vector_store.as_retriever(
+        search_kwargs={"k": 3}
+    )
+
+    return retriever
+
+retriever = create_retriever()
 
 # Optional local LLM
 # llm = ChatOllama(model="tinyllama")
@@ -65,54 +95,16 @@ llm = ChatOllama(
 )
 
 # =========================================================
-# 3. LOAD DOCUMENT
+# 3 to 6
+# Commented to avoid cpu stress. Streamlit rebuilds embeddings and Chroma again for each input. 
+# So, cache it as shown in step 1
 # =========================================================
-# Reads product-data.txt into LangChain Document objects
-
-document = TextLoader(
-    "product-data.txt", 
-    encoding="utf-8"
-).load()
-
-# =========================================================
-# 4. SPLIT DOCUMENT INTO CHUNKS
-# =========================================================
-# Large documents are split into smaller chunks for better retrieval accuracy and semantic search
-
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
-)
-chunks = text_splitter.split_documents(document)
-
-# =========================================================
-# 5. CREATE VECTOR DATABASE (CHROMA)
-# =========================================================
-# Internally:
-#
-# chunk
-#   -> embedding vector
-#   -> stored in Chroma DB
-#
-# Example:
-# "Battery lasts 10 hours"
-# -> [0.21, -0.88, ...]
-
-vector_store = Chroma.from_documents(chunks, embeddings)
-
-# =========================================================
-# 6. CREATE RETRIEVER
-# =========================================================
-# Retriever performs semantic search on vector DB later.
-#
-# Runtime retrieval flow:
-#
-# Question
-# -> question embedding
-# -> similarity search in Chroma
-# -> relevant chunks returned
-
-retriever = vector_store.as_retriever()
+# embeddings = OllamaEmbeddings(model="nomic-embed-text")
+# document = TextLoader("product-data.txt", encoding="utf-8").load()
+# text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+# chunks = text_splitter.split_documents(document)
+# vector_store = Chroma.from_documents(chunks, embeddings)
+# retriever = vector_store.as_retriever()
 
 # =========================================================
 # 7. HISTORY-AWARE RETRIEVER PROMPT
@@ -145,7 +137,8 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages(
             Use the chat history and the latest user input to create
             a self-contained question.
 
-            Do NOT answer the question, only rewrite it."""
+            Do NOT answer the question, only rewrite it.
+            """
         ),
         MessagesPlaceholder("chat_history"),
         (
@@ -158,14 +151,21 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages(
 # =========================================================
 # 8. CREATE HISTORY-AWARE RETRIEVER
 # =========================================================
-# Full internal flow:
+# Converts follow-up questions into standalone questions before retrieval.
 #
-# Current Question
-# +
-# Chat History
-# -> LLM rewrites standalone question
-# -> Retriever searches vector DB
-# -> Relevant chunks returned
+# Flow:
+#   input + chat_history
+#       -> LLM rewrites input using contextualize_q_prompt
+#       -> standalone question
+#       -> retriever searches vector DB
+#       -> relevant chunks returned
+#
+# If there is no chat_history:
+#   input may be sent directly to retriever.
+#
+# Important:
+#   This retrieves documents only.
+#   It does not generate the final answer.
 
 history_aware_retriever = create_history_aware_retriever(
     llm,
@@ -213,14 +213,38 @@ qa_prompt = ChatPromptTemplate.from_messages(
 # =========================================================
 # 10. CREATE QA CHAIN
 # =========================================================
+#
+# qa_chain is the answer-generation part of RAG.
+#
 # "Stuff" means:
-# Retrieved chunks are stuffed directly into prompt context.
+#   Retrieved chunks/documents are directly stuffed into
+#   the prompt variable, usually {context}.
+#
+# It does NOT retrieve documents.
+# It only takes already-retrieved documents and asks the LLM
+# to generate the final answer.
 #
 # Equivalent mental model:
 #
-# def qa_chain(question, docs):
-#     prompt = build_prompt(question, docs)
-#     return llm(prompt)
+#   def qa_chain(input, context, chat_history=None):
+#       prompt = build_prompt(
+#           input=input,              # current user question
+#           context=context,          # retrieved document chunks
+#           chat_history=chat_history # previous messages, if prompt uses it
+#       )
+#
+#       answer = llm.invoke(prompt)
+#       return answer
+#
+# Runtime:
+#   retrieved docs + user question + optional chat history
+#       -> prompt
+#       -> LLM
+#       -> final answer
+#
+# Important:
+#   qa_chain does not search Chroma/vector DB.
+#   Retrieval already happened before this chain runs
 
 qa_chain = create_stuff_documents_chain(llm, qa_prompt)                     # Stuff means - retrieved chunks are stuffed into prompt context, then sent to LLM
 
@@ -237,10 +261,119 @@ qa_chain = create_stuff_documents_chain(llm, qa_prompt)                     # St
 # -> QA chain builds prompt
 # -> LLM generates final answer
 
-rag_chain = create_retrieval_chain(
-    history_aware_retriever,
-    qa_chain,
-)
+
+# 1. history_aware_retriever
+# ------------------------------------------------------------
+# history_aware_retriever = create_history_aware_retriever(...)
+#
+# Equivalent mental model:
+#
+#   def history_aware_retriever(input, chat_history):
+#
+#       # If there is previous conversation, use LLM to rewrite
+#       # the current follow-up question into a standalone question.
+#       if chat_history exists:
+#           standalone_question = rewrite_follow_up_question(input, chat_history)
+#       else:
+#           standalone_question = input
+#
+#       # Send standalone question to normal vector retriever.
+#       #
+#       # retriever.invoke(...) internally:
+#       #   1. Converts standalone_question into embedding/vector
+#       #   2. Compares it with stored chunk vectors in Chroma
+#       #   3. Finds semantically similar chunks
+#       #   4. Returns those chunks as documents
+#       relevant_docs = retriever.invoke(standalone_question)
+#       return relevant_docs
+#
+# Job:
+#   - Look at current question + previous chat history
+#   - Convert follow-up question into standalone question
+#   - Search vector store using standalone question
+#   - Return relevant chunks/documents
+#
+# Example:
+#   chat_history:
+#       Human: What is Samsung S24 storage?
+#       AI: Samsung S24 has 256GB storage.
+#
+#   current input:
+#       What about iPhone?
+#
+#   rewritten standalone question:
+#       What is the storage of iPhone?
+#
+#   retriever searches vector DB using:
+#       "What is the storage of iPhone?"
+#
+#
+# 2. qa_chain = create_stuff_documents_chain(...)
+# ------------------------------------------------------------
+# Equivalent mental model:
+#
+#   def qa_chain(input, context, chat_history):
+#       prompt = f"""
+#       Chat History:
+#       {chat_history}
+#
+#       Context:
+#       {context}
+#
+#       Question:
+#       {input}
+#       """
+#       return llm(prompt)
+#
+# Job:
+#   - Take retrieved chunks as context
+#   - Take current question as input
+#   - Optionally take chat history if prompt includes it
+#   - Build final prompt
+#   - Send final prompt to LLM
+#   - Return final answer
+#
+#
+# 3. rag_chain = create_retrieval_chain(history_aware_retriever, qa_chain)
+# ------------------------------------------------------------
+# Equivalent mental model:
+#
+#   def rag_chain(inputs):
+#       input = inputs["input"]
+#       chat_history = inputs.get("chat_history", [])
+#
+#       relevant_docs = history_aware_retriever(
+#           input=input,
+#           chat_history=chat_history
+#       )
+#
+#       llm_answer = qa_chain.invoke({
+#           "input": input,
+#           "chat_history": chat_history,
+#           "context": relevant_docs
+#       })
+#
+#       return {
+#           "input": input,
+#           "chat_history": chat_history,
+#           "context": relevant_docs,
+#           "answer": llm_answer
+#       }
+#
+# Job:
+#   - Use chat history to understand follow-up questions
+#   - Retrieve relevant chunks from vector store
+#   - Send chunks + question to LLM
+#   - Return answer
+#
+# Important:
+#   create_retrieval_chain(...) only builds the pipeline.
+#   It does not run retrieval yet.
+#
+#   Retrieval happens when you call:
+#       rag_chain.invoke(...)
+
+rag_chain = create_retrieval_chain(history_aware_retriever, qa_chain)
 
 # =========================================================
 # 12. CHAT HISTORY STORAGE (STREAMLIT)
@@ -262,12 +395,45 @@ history_for_chain = StreamlitChatMessageHistory()
 # you would manually manage chat history yourself.
 
 chain_with_history = RunnableWithMessageHistory(
-    rag_chain,                                                              # Which chain to wrap
-    lambda session_id : history_for_chain,                                  # Where chat messages are stored
-    input_messages_key="input",                                             # User question field name
-    history_messages_key="chat_history",                                    # History variable name inside prompts ie., previous messages  
-                                                                            # Variable name used by MessagesPlaceholder("chat_history")               
-    output_messages_key="answer",                                           # AI response field name
+    rag_chain,                                            # Chain being wrapped with memory
+
+    lambda session_id : history_for_chain,                # Function that returns chat history for a session_id
+                                                          # NOTE:
+                                                          # This ignores session_id and always returns the same history object.
+                                                          # Fine for learning/demo.
+                                                          # For real apps, use a dictionary/database keyed by session_id.
+
+    input_messages_key="input",                           # The key where the current user question is found
+                                                          # Example:
+                                                          #   chain_with_history.invoke({"input": question}, config)
+                                                          #
+                                                          # RunnableWithMessageHistory reads this "input" value
+                                                          # and stores it as the latest human message.
+
+    history_messages_key="chat_history",                  # The key used to inject previous messages into the wrapped chain
+                                                          #
+                                                          # Example hidden input to rag_chain:
+                                                          #
+                                                          #   {
+                                                          #       "input": question,
+                                                          #       "chat_history": previous_messages
+                                                          #   }
+                                                          #
+                                                          # This must match:
+                                                          #   MessagesPlaceholder("chat_history")
+
+    output_messages_key="answer",                         # The key where the final AI answer is found in rag_chain output
+                                                          #
+                                                          # Example rag_chain output:
+                                                          #
+                                                          #   {
+                                                          #       "input": question,
+                                                          #       "context": retrieved_docs,
+                                                          #       "answer": "Final answer from LLM"
+                                                          #   }
+                                                          #
+                                                          # RunnableWithMessageHistory reads response["answer"]
+                                                          # and stores it as the latest AI message.
 )
 
 ## Without RunnableWithMessageHistory, YOU would need to do:
@@ -289,7 +455,9 @@ chain_with_history = RunnableWithMessageHistory(
 # =========================================================
 
 st.write("Mini Customer Support AI")
-question = st.text_input("Your Question")
+question = st.text_input("Ask a question about the document")
+
+ask_button = st.button("Ask")
 
 # =========================================================
 # 15. SESSION MANAGEMENT
@@ -306,30 +474,50 @@ session_id = st.session_state.session_id
 # 16. EXECUTE CONVERSATIONAL RAG
 # =========================================================
 
-if question:
-
     # 1. Before (simple RAG): 
-    # Only current question was sent into rag_chain
-    # 
-    #   rag_chain.invoke({
+    # Only the current question was sent into rag_chain.
+    # Simple RAG had no memory of previous questions
+    #
+    #   response = rag_chain.invoke({
     #       "input": question
     #   })
 
-    # 2. Current (conversational RAG): 
-    # "Run rag_chain with automatic memory handling"
-    # 
-    # RunnableWithMessageHistory automatically:
-    #   1. Loads old chat messages
-    #   2. Passes chat history into rag_chain
-    #   3. Stores new conversation messages
+    # 2. Now: Conversational RAG
+    # We are using chain_with_history.
     #
-    # Hidden internal flow:
-    #   rag_chain.invoke({
+    # chain_with_history is usually created using:
+    #
+    #   RunnableWithMessageHistory(...)
+    #
+    # Its job is memory handling.
+    #
+    # It automatically:
+    #   1. Uses session_id to find old chat messages
+    #   2. Loads previous chat messages
+    #   3. Passes those messages into the wrapped chain
+    #   4. Runs the wrapped chain
+    #   5. Stores the new user question and AI answer
+
+    # 3. Hidden internal flow of chain_with_history.invoke(...)
+    # --------------------------------------------------------
+    # This:
+    #
+    #   chain_with_history.invoke(
+    #       {"input": question},
+    #       {"configurable": {"session_id": session_id}}
+    #   )
+    #
+    # roughly becomes:
+    #
+    #   previous_messages = get_chat_history(session_id)
+    #   response = rag_chain.invoke({
     #       "input": question,
     #       "chat_history": previous_messages
-    #   }) 
-    # 
-    # 3. chain_with_history.invoke(...) internally:
+    #   })
+    #   save_to_chat_history(session_id, question, response["answer"])
+    #   return response
+
+    # 4. chain_with_history.invoke(...) internally:
     #   -> loads previous chat history
     #   -> rewrites follow-up question (if needed)
     #   -> retrieves relevant docs
@@ -338,23 +526,70 @@ if question:
     #   -> stores new conversation messages
     #   -> returns answer
 
-    # 4. Different capabilities of current RAG SYSTEM
-    #   - NORMAL RAG RETRIEVAL
-    #   - CONVERSATIONAL MEMORY
-    #   - HISTORY-AWARE RETRIEVER
-    #   - SEMANTIC RETRIEVAL
+    # 5. If you are using history-aware retriever
+    # --------------------------------------------------------
+    # The history-aware retriever handles follow-up questions.
+    #
+    # It does:
+    #
+    #   chat_history + current question
+    #       ↓
+    #   rewrite current question into standalone question
+    #       ↓
+    #   send standalone question to vector retriever
+    #       ↓
+    #   retrieve relevant documents
+    #
+    # Example:
+    #
+    #   Chat history:
+    #       User: What is Samsung S24 storage?
+    #       AI: Samsung S24 has 256GB storage.
+    #
+    #   Current question:
+    #       What about iPhone?
+    #
+    #   Rewritten question:
+    #       What is the storage of iPhone?
+
+
+    # 6. Full current system capabilities
+    # --------------------------------------------------------
+    # Your current RAG system can have:
+    #
+    #   - Semantic retrieval
+    #       Finds relevant chunks from vector DB.
+    #
+    #   - Normal RAG answering
+    #       Sends retrieved context + question to LLM.
+    #
+    #   - Conversational memory
+    #       Remembers previous user/AI messages by session_id.
+    #
+    #   - History-aware retrieval
+    #       Rewrites follow-up questions using chat history.
+
+
+    # Important:
+    #   RunnableWithMessageHistory  = memory loader/saver
+    #   History-aware retriever     = follow-up question rewriter
+    #   Retriever                   = vector DB searcher
+    #   QA chain                    = answer generator
+
+if ask_button and question:
     response = chain_with_history.invoke(
         {
             "input": question
         },
         {
-            "configurable": 
+            "configurable":
                 {
                     "session_id": session_id
                 }
-        }        
+        }
     )
-    st.write(response['answer'])
+
+    st.write(response["answer"])
 
 ## Run
 # cd D:\dev\github\agentic-ai-langchaindemo\s10-RAG

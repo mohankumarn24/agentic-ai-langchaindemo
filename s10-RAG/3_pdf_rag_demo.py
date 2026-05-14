@@ -127,7 +127,7 @@ chunks = text_splitter.split_documents(document)
 # may match:
 # "neural networks"
 
-vector_store = Chroma.from_documents(chunks,embeddings)
+vector_store = Chroma.from_documents(chunks, embeddings)
 
 # =========================================================
 # 6. CREATE RETRIEVER
