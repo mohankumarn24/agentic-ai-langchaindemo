@@ -11,120 +11,177 @@ from langchain_ollama import ChatOllama
 
 set_debug(True)
 
-# ------------------------------
+# ----------------------------------------
 # 1. LLM setup (gpt-4o for vision + tools)
-# ------------------------------
+# ----------------------------------------
 ## OpenAI cloud vision model
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # llm = ChatOpenAI(model="gpt-4o",api_key=OPENAI_API_KEY)
 
-## Ollama local - Vision support (Landmark identification) & Tool calling support (ReAct agent)
-llm = ChatOllama(model="qwen3.5:4b") 
+# Vision model: must support images
+vision_llm = ChatOllama(model="llava")  # qwen3.5:4b
 
-
-# ------------------------------
-# 2. Helper to encode image
-# ------------------------------
-def encode_image(image_file):
-    return base64.b64encode(image_file.read()).decode()
-
-
-# ------------------------------
-# 3. Vision prompt (identify landmark)
-# ------------------------------
-vision_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system", 
-            "You are a helpful assistant that can identify a landmark."
-        ),
-        (
-            "human",
-            [
-                {"type": "text", "text": "return the landmark name"},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        # NOTE: `image` will be passed at runtime via chain.invoke({"image": ...})
-                        "url": "data:image/jpeg;base64,{image}",
-                        "detail": "low",
-                    },
-                },
-            ],
-        ),
-    ]
+# Agent model: must support tool calling (ReAct agent)
+if not os.environ.get("OLLAMA_API_KEY"):
+    st.error("OLLAMA_API_KEY is missing.")
+    st.stop()
+    
+agent_llm = ChatOllama(
+    model="gpt-oss:20b",
+    base_url="https://ollama.com",
+    headers={
+        "Authorization":
+            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+    }
 )
 
-vision_chain = vision_prompt | llm
+# -------------------------
+# 2. Helper to encode image
+# -------------------------
+def encode_image(image_file):
+    image_file.seek(0)                                                  # Go to beginning
+    image_b64 = base64.b64encode(image_file.read()).decode("utf-8")     # Read full image, convert to base64
+    mime_type = image_file.type
+    return image_b64, mime_type
 
+# ------------------------------------
+# 3. Vision prompt (identify landmark)
+# ------------------------------------
+vision_prompt = ChatPromptTemplate.from_messages([
+    (
+        "system", 
+        "You identify famous landmarks from images. Return only the landmark name. If unsure, say Unknown."
+    ),
+    (
+        "human",
+        [
+            {
+                "type": "text", 
+                "text": "Identify the landmark in this image. Return only the landmark name."
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    # The uploaded image is converted to a base64 string.
+                    # LangChain replaces {mime_type} and {image} at runtime.
+                    #
+                    # Example:
+                    #   mime_type = "image/jpeg"
+                    #   image = "/9j/4AAQSkZJRgABAQAAAQ..."
+                    #
+                    # Then:
+                    #   "data:{mime_type};base64,{image}"
+                    #
+                    # becomes:
+                    #   "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
+                    #
+                    # This data URL is sent to the vision model as the image input.
+                    "url": "data:{mime_type};base64,{image}",
+                    "detail": "low",
+                },
+            },
+        ],
+    ),
+])
+
+vision_chain = vision_prompt | vision_llm
 
 # ------------------------------
 # 4. Tools (Wikipedia + DuckDuckGo)
 # ------------------------------
 tools = load_tools(["wikipedia", "ddg-search"])
-
+tool_names = ", ".join([tool.name for tool in tools])
 
 # ------------------------------
 # 5. ReAct-style agent (new v1 API)
 # ------------------------------
-react_system_prompt = """
-You are a ReAct-style AI agent.
+react_system_prompt = f"""
+                      You are a helpful ReAct-style landmark information agent.
 
-Follow this loop carefully:
-1. THOUGHT: Think step by step about what to do next.
-2. ACTION: When needed, call one of the tools (wikipedia, ddg-search).
-3. OBSERVATION: Read the tool result and decide the next step.
+                      You have access to these tools:
+                      {tool_names}
 
-Repeat THOUGHT → ACTION → OBSERVATION
-until you are ready to give the final answer.
+                      Use search when the answer needs factual, historical, or current web information.
+                      If you use a tool, base your final answer on the tool result.
 
-When you are confident, stop using tools and respond with a clear, concise final answer to the user.
-"""
+                      Give a clear and concise answer.
+                      """
 
 agent = create_agent(
-    model=llm,
+    model=agent_llm,
     tools=tools,
     system_prompt=react_system_prompt
 )
 
-
-# ------------------------------
+# ---------------
 # 6. Streamlit UI
-# ------------------------------
-st.title("Landmark Helper (Vision + ReAct Agent)")
+# ---------------
+st.title("Landmark Helper - Vision + Agent")
 
-uploaded_file = st.file_uploader("Upload your image", type=["jpg", "png"])
+uploaded_file = st.file_uploader("Upload landmark image", type=["jpg", "jpeg", "png"])
 question = st.text_input("Enter a question about the landmark")
 
-task = None
+if st.button("Ask") and uploaded_file and question:
+    try:
+        # First: use vision chain to get landmark name
+        with st.spinner("Identifying landmark..."):
+            image_b64, mime_type = encode_image(uploaded_file)
+            # TODO: Commented vision llm to avoid cpu spike
+            # vision_response = vision_chain.invoke({
+            #     "image": image_b64,
+            #     "mime_type": mime_type
+            # })
+            # landmark_name = vision_response.content.strip()
+            landmark_name = 'Taj Mahal' 
 
-# First: use vision chain to get landmark name
-if uploaded_file and question:
-    image_b64 = encode_image(uploaded_file)
-    vision_response = vision_chain.invoke({"image": image_b64})
-    landmark_name = vision_response.content
-    task = question + " " + landmark_name
+        st.write("Detected landmark:", landmark_name)
 
-# Then: send combined task to tools agent
-if task:
-    result = agent.invoke(
-        {
-            "messages": [
+        if landmark_name.lower() == "unknown":
+            st.warning("Could not confidently identify the landmark.")
+            st.stop()
+
+        agent_task = f"""
+                     Landmark: {landmark_name}
+                     Question: {question}
+
+                     Answer the question clearly and briefly.
+                     """
+
+        # Then: send combined task to tools agent
+        with st.spinner("Searching and answering..."):
+            result = agent.invoke(
                 {
-                    "role": "user",
-                    "content": task + " without explanation",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": agent_task,
+                        }
+                    ]
                 }
-            ]
-        }
-    )
-    final_msg = result["messages"][-1]
-    st.write(final_msg.content)
+            )
 
+        final_msg = result["messages"][-1]
+        st.write(final_msg.content)
+    except Exception as e:
+        st.error("Failed while processing the image or running the agent.")
+        st.exception(e)
 
 ## Run
-# TODO: NOT TESTED AS COULDN'T DOWNLOAD 'qwen3.5:4b' MODEL
 # ollama pull qwen3.5:4b
 #
 # cd D:\dev\github\agentic-ai-langchaindemo\s12_agents
 # python -m streamlit run 2_landmark_helper.py
 # http://localhost:8501/  
+
+## Output:
+# TODO: landmark is hardcoded to 'Taj Mahal'
+#
+# Browse file: 
+#     D:\dev\github\agentic-ai-langchaindemo\s12_agents\statue_of_liberty.jpg
+#
+# Enter question: 
+#     Where is it located?
+#
+# Response: 
+#     Detected landmark: Taj Mahal
+#     Taj Mahal is located in Agra, Uttar Pradesh, India.
