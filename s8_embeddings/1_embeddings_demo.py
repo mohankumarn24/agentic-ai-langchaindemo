@@ -20,29 +20,10 @@ ollama_embeddings_local = OllamaEmbeddings(
     model="nomic-embed-text"
 )
 
-# Ollama cloud embedding
-# This didn't work initially, so upgraded langchain-ollama:
-#     pip install -U langchain-ollama
-#
-# ollama_embeddings_cloud = OllamaEmbeddings(
-#     model="nomic-embed-text",
-#     base_url="https://ollama.com",
-#     headers={
-#         "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-#     }
-# )
-#
-# 401 Unauthorized may mean the API key/account does not have permission for this endpoint/model.
-#
-# ollama_embeddings_cloud = OllamaEmbeddings(
-#     model="nomic-embed-text",
-#     base_url="https://ollama.com",
-#     client_kwargs={
-#         "headers": {
-#             "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-#         }
-#     }
-# )
+# Numerical vectors
+#   These vectors capture the meaning of the text.
+#   They are used for semantic search / retrieval.
+
 
 ## Embeddings
 # Embeddings convert text into numerical vectors.
@@ -56,7 +37,9 @@ ollama_embeddings_local = OllamaEmbeddings(
 #     Generates text.
 #
 # Embedding model:
-#     Generates vectors.
+#     Generates numerical vectors
+#       - These vectors capture the meaning of the text
+#       - They are used for semantic search / retrieval.
 
 ## Generate embedding
 text = input("Enter text: ")
