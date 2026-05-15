@@ -88,6 +88,7 @@ if ask_button and city and month and language and budget:
     st.success("Response:")
 
     # ChatOpenAI usually returns AIMessage, OllamaLLM usually returns string
+    # Example: response -> AIMessage(content="Hello! How can I help you?")    
     if hasattr(response, "content"):
         st.write(response.content)
     else:

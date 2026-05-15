@@ -5,21 +5,27 @@ from langchain_openai import ChatOpenAI
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = OllamaLLM(model="tinyllama")
-ollama_llm_cloud = OllamaLLM(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 ## PromptTemplate
@@ -43,10 +49,24 @@ prompt_template = PromptTemplate(
 ## Streamlit UI
 st.title("Travel Guide")
 
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
+# input fields
 city = st.text_input("Enter city")
 month = st.text_input("Enter month of travel")
 language = st.text_input("Enter language")
 budget = st.selectbox("Travel Budget", ["Low", "Medium", "High"])
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
 
 ## Langchain Expression Language (LCEL)
 # '|' means take output from left side and send it to right side
@@ -63,27 +83,25 @@ budget = st.selectbox("Travel Budget", ["Low", "Medium", "High"])
 #     final_prompt = prompt_template.format(city=city, month=month, language=language, budget=budget)
 #     response = ollama_llm_cloud.invoke(final_prompt)
 
-chain = prompt_template | ollama_llm_cloud
+chain = prompt_template | llm_selected
 
 ## Generate
-# The LLM is called only when you click the button
 if st.button("Generate Travel Guide"):
     if city and month and language and budget:
-        response = chain.invoke({
-            "city": city,
-            "month": month,
-            "language": language,
-            "budget": budget
-        })
+        with st.spinner(f"Thinking using {selected_provider}..."):
+            response = chain.invoke({
+                "city": city,
+                "month": month,
+                "language": language,
+                "budget": budget
+            })
 
         st.success("Response:")
+
+        # ChatOpenAI usually returns AIMessage, OllamaLLM usually returns string 
         if hasattr(response, "content"):
-            # When using ChatOllama or ChatOpenAI, response may be an AIMessage/chat message object
-            # Example:
-            #     response -> AIMessage(content="Hello! How can I help you?")
             st.write(response.content)
         else:
-            # When using OllamaLLM, response is usually a plain string
             st.write(response)
     else:
         st.warning("Please fill all fields")

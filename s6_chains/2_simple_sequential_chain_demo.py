@@ -7,21 +7,27 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = OllamaLLM(model="tinyllama")
-ollama_llm_cloud = OllamaLLM(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 ## Prompts
@@ -46,6 +52,25 @@ speech_prompt = PromptTemplate(
     """
 )
 
+## Streamlit UI
+st.title("Speech Generator")
+
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
+# input fields
+topic = st.text_input("Enter topic: ")
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
+
 ## CHAINS (LCEL)
 # Step 1: topic -> title_prompt -> LLM -> title -> display title -> return title
 # Step 2: title -> speech_prompt -> LLM -> speech
@@ -53,44 +78,48 @@ speech_prompt = PromptTemplate(
 #         final_chain = first_chain | second_chain
 #         topic -> title -> speech
 
-def display_title_and_return_title(title):
-    st.write("Generated Title: ")
-    st.write(title)
+# Helper functions
+def display_title_and_return_title(title: str) -> str:
+    st.subheader("Generated Title")
+    st.markdown(title)
     return title
 
 first_chain = (
     title_prompt
-    | ollama_llm_cloud
+    | llm_selected
     | StrOutputParser()                                         # Converts LLM response to plain string. See 'Note 1'
+                                                                # StrOutputParser() converts the LLM response into a plain Python string
+                                                                # AIMessage(content="This is the answer") -> "This is the answer"
+
     | RunnableLambda(display_title_and_return_title)            # Displays title and passes it to next chain. 
                                                                 # Other approaches:  
-                                                                #   first_chain = title_prompt | ollama_llm_cloud | StrOutputParser() | display_title_and_return_title  
-                                                                #   first_chain = title_prompt | ollama_llm_cloud | StrOutputParser() | (lambda title: (st.write(title), title)[1])
-                                                                #   first_chain = title_prompt | ollama_llm_cloud | StrOutputParser() | (lambda title: (st.write("Generated Title"), st.write(title), title)[2])
+                                                                #   first_chain = title_prompt | llm_selected | StrOutputParser() | display_title_and_return_title  
+                                                                #   first_chain = title_prompt | llm_selected | StrOutputParser() | (lambda title: (st.write(title), title)[1])
+                                                                #   first_chain = title_prompt | llm_selected | StrOutputParser() | (lambda title: (st.write("Generated Title"), st.write(title), title)[2])
 )
 
 second_chain = (
     speech_prompt
-    | ollama_llm_cloud
+    | llm_selected
     | StrOutputParser()
 )
 
-final_chain  = first_chain   | second_chain
-
-## Streamlit UI
-st.title("Speech Generator")
-topic = st.text_input("Enter topic: ")
+final_chain = first_chain | second_chain
 
 ## Generate
 if st.button("Generate Speech"):
     if topic:
-        response = final_chain.invoke({
-            "topic": topic
-        })
-
-        st.write("Generated Speech:")                           # Use st.write()    for normal/basic output
-        st.markdown(response)                                   # Use st.markdown() for nicely formatted text output
+        with st.spinner(f"Thinking using {selected_provider}..."):
+            response = final_chain.invoke({
+                "topic": topic
+            })
+            
+        # ChatOpenAI usually returns AIMessage, OllamaLLM usually returns string 
+        st.subheader("Generated Speech")                        
+        st.markdown(response)                                   # Second chain ends with 'StrOutputParser()'. So, response will already be a plain string
+                                                                # Use st.markdown() for nicely formatted text output
                                                                 # st.markdown(response) will show headings, bold text, and bullets properly
+                                                                # Use st.write()    for normal/basic output
     else:
         st.warning("Please enter a topic")
 

@@ -7,7 +7,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda
 
-## LLM
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
+
+## LLMs
 ## Experiment with different LLM combinations:
 #     {Gemini, OpenAI}
 #     {OpenAI, Ollama local}
@@ -20,15 +24,16 @@ title_llm = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+        "Authorization": f"Bearer {ollama_api_key}"
     },
     temperature=0.2
 )
+
 speech_llm = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
+        "Authorization": f"Bearer {ollama_api_key}"
     },
     temperature=0.8
 )
@@ -55,31 +60,40 @@ speech_prompt = PromptTemplate(
     """
 )
 
-## Chains with Streamlit display step
-def display_title(title):
-    st.write("Generated Title:")
-    st.write(title)
+## LCELs
+# Helper functions
+def display_title(title: str) -> str:
+    st.subheader("Generated Title")
+    st.markdown(title)
     return title
 
-def title_to_dictionary(title):
+# def title_to_dictionary(title):
+# def title_to_dictionary(title: str) -> dict:    
+def title_to_dictionary(title: str) -> dict[str, str]:    
     return {"title": title}
 
+# first_chain: Takes topic input, generates a speech title, displays it, and returns the title
 first_chain = (
     title_prompt
     | title_llm
-    | StrOutputParser()
+    | StrOutputParser()                     # StrOutputParser() converts the LLM response into a plain Python string
+                                            # AIMessage(content="This is the answer") -> "This is the answer"
     | RunnableLambda(display_title)         # Same as: lambda title: (st.write("Generated Title"), st.write(title), title)[2]
 )
 
+# second_chain: Takes the generated title and returns the final speech.
+# LCEL chains automatically return the output of their last chain; here, second_chain returns the speech
 second_chain = (
     speech_prompt
     | speech_llm
     | StrOutputParser()
 )
 
+# final_chain: Connects first_chain and second_chain so topic becomes title, then title becomes speech.
+# Runs title generation, converts title to {"title": title}, then generates the speech
 final_chain = (
     first_chain
-    | RunnableLambda(title_to_dictionary)   # Same as: lambda title: {"title": title}
+    | RunnableLambda(title_to_dictionary)   # Converts title string -> {"title": title}
     | second_chain
 )
 
@@ -90,9 +104,11 @@ topic = st.text_input("Enter topic")
 ## Generate
 if st.button("Generate Speech"):
     if topic:
-        response = final_chain.invoke({
-            "topic": topic
-        })
+        with st.spinner("Generating speech..."):
+            response = final_chain.invoke({
+                "topic": topic
+            })
+
         st.subheader("Generated Speech")
         st.markdown(response)
     else:
