@@ -7,6 +7,10 @@ from langchain_openai import ChatOpenAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
 
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
+
 # Create MCP client using stdio transport
 # This client will start the MCP server process itself
 client_stdio = MultiServerMCPClient({
@@ -21,8 +25,16 @@ client_stdio = MultiServerMCPClient({
 # Example: wikipedia_search, ddg_search
 tools = asyncio.run(client_stdio.get_tools())
 
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
 # Create Ollama chat model using Ollama Cloud
-llm = ChatOllama(
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
@@ -31,22 +43,38 @@ llm = ChatOllama(
     }
 )
 
-# Create an agent using the LLM and MCP tools
-agent = create_agent(llm, tools)
-
+## Streamlit UI
 # Streamlit page title
 st.title("AI Agent (MCP Version)")
 
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
 # Input box for user task/question
 task = st.text_input("Assign me a task")
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
+
+## Agent
+# Create an agent using the LLM and MCP tools
+agent = create_agent(llm_selected, tools)
 
 # Button to trigger agent
 ask_button = st.button("Ask")
 
 # Run agent only when button is clicked and task is not empty
 if ask_button and task:
-    # Send task to the agent
-    response = asyncio.run(agent.ainvoke({"messages": task}))
+    with st.spinner(f"Thinking using {selected_provider}..."):  
+        # Send task to the agent
+        response = asyncio.run(agent.ainvoke({"messages": task}))
 
     # Show full response object for debugging
     st.write(response)
