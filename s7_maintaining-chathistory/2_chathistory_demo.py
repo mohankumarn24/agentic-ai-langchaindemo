@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 import uuid
 
 from langchain_openai import ChatOpenAI
@@ -9,21 +8,27 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = ChatOllama(model="tinyllama")
-ollama_llm_cloud = ChatOllama(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 ## Prompt template: creates the final message structure sent to the LLM
@@ -43,8 +48,29 @@ prompt_template = ChatPromptTemplate.from_messages([
     ("human","{input}")                                                                         # Current user question
 ])
 
-## LCEL chain
-chain = prompt_template | ollama_llm_cloud | StrOutputParser()
+## LCELs
+# helper function
+def select_llm_provider():
+    print("Choose LLM provider:")
+    print("1. OpenAI Cloud")
+    print("2. Ollama Cloud")
+
+    choice = input("Enter choice [1/2]: ").strip()
+
+    if choice == "1":
+        print("Selected LLM: OpenAI Cloud")
+        return "OpenAI Cloud", llm_openai_cloud
+
+    if choice == "2":
+        print("Selected LLM: Ollama Cloud")
+        return "Ollama Cloud", llm_ollama_cloud
+
+    print("Invalid choice. Defaulting to Ollama Cloud.")
+    return "Ollama Cloud", llm_ollama_cloud
+
+# LCEL
+selected_provider, llm_selected = select_llm_provider()
+chain = prompt_template | llm_selected  | StrOutputParser()
 
 ## Temporary in-memory conversation storage.
 #  Stores previous user + AI messages temporarily.
@@ -182,7 +208,7 @@ while True:
 #     AI   : Scrum is a lightweight Agile framework...
 #
 # Round 2:
-#     Human: summarize in one sentence
+#     Human: summarize in two sentences
 #     AI   : Summarizes the previous Scrum explanation
 #
 # Why it works:

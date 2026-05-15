@@ -3,28 +3,56 @@ import streamlit as st
 import uuid
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import OllamaLLM, ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = ChatOllama(model="tinyllama")
-ollama_llm_cloud = ChatOllama(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
+
+## Streamlit UI
+st.title("Agile Guide")
+
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
+# input fields
+user_input = st.text_input("Enter question:")
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
+
+st.info(f"Selected provider: {selected_provider}")
+print(f"Selected provider: {selected_provider}")
 
 ## Prompt template
 prompt_template = ChatPromptTemplate.from_messages([    
@@ -40,7 +68,7 @@ prompt_template = ChatPromptTemplate.from_messages([
 ## LCEL chain
 chain = (
     prompt_template
-    | ollama_llm_cloud
+    | llm_selected
     | StrOutputParser()
 )
 
@@ -75,10 +103,6 @@ chain_with_history = RunnableWithMessageHistory(
     history_messages_key="chat_history"         # Matches MessagesPlaceholder variable
 )
 
-## Streamlit UI
-st.title("Agile Guide")
-user_input = st.text_input("Enter question:")
-
 ## Streamlit session id
 #  Streamlit reruns the entire script for every interaction.
 #  So session_id should be stored in st.session_state.
@@ -100,16 +124,17 @@ session_id = st.session_state.session_id
 ## Generate
 if st.button("Ask"):
     if user_input:
-        response = chain_with_history.invoke(
-            {
-                "input": user_input
-            },
-            {
-                "configurable": {
-                    "session_id": session_id
+        with st.spinner(f"Thinking using {selected_provider}..."):
+            response = chain_with_history.invoke(
+                {
+                    "input": user_input
+                },
+                {
+                    "configurable": {
+                        "session_id": session_id
+                    }
                 }
-            }
-        )
+            )
 
         st.subheader("Answer")
         st.markdown(response)

@@ -2,25 +2,31 @@ import os
 import streamlit as st
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import OllamaLLM, ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = ChatOllama(model="tinyllama")
-ollama_llm_cloud = ChatOllama(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 ## PROMPT TEMPLATE
@@ -59,25 +65,45 @@ prompt_template = ChatPromptTemplate.from_messages([
     ("human", "{user_question}")
 ])
 
-## LCEL chain
-chain = prompt_template | ollama_llm_cloud | StrOutputParser()
-
 ## Streamlit UI
 st.title("Scrum Guide")
+
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
+# input fields
 user_question = st.text_input("Enter question related to Scrum")
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
+
+## LCEL chain
+# chain: user_question -> chat prompt -> selected LLM -> plain string response
+chain = prompt_template | llm_selected | StrOutputParser()
 
 ## Generate
 # Current app has no chat history
 if st.button("Ask"):
     if user_question:
         try:
-            response = chain.invoke({
-                "user_question": user_question
-            })
+            with st.spinner(f"Thinking using {selected_provider}..."):
+                response = chain.invoke({
+                    "user_question": user_question
+                })
+           
             st.subheader("Answer")
-            st.markdown(response)
+            st.write(response)
+
         except Exception as e:
             st.error(f"Error: {e}")
+            st.exception(e)
     else:
         st.warning("Please enter a question")
 ## Run:
