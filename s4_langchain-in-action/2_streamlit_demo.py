@@ -10,77 +10,93 @@ from langchain_ollama import OllamaLLM
 
 ## Logging Configuration
 logging.basicConfig(
-    level=logging.DEBUG,  # change to INFO in production
+    level=logging.DEBUG,                                   # change to INFO in production
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-## LLM
-# OpenAI cloud api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_llm_cloud = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY, temperature=0)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama cloud api
-ollama_llm_local = OllamaLLM(model="tinyllama")
-ollama_llm_cloud = OllamaLLM(
+## LLMs
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = OllamaLLM(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 ## Streamlit UI
 st.title("Ask anything")
-question = st.text_input("Enter the question:")
+
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: 'OpenAI Cloud'. if 'index=1' -> 'Ollama Cloud'
+)
+
+question = st.text_input("Enter question")
+
+ask_button = st.button("Ask")
+
+## Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
 
 ## Generate
-if question:
+if ask_button and question:
+    logger.debug(f"Selected provider: {selected_provider}")
     logger.debug(f"Received question: {question}")
+
     try:
-        with st.spinner("Thinking..."):
-            response = ollama_llm_cloud.invoke(
+        with st.spinner(f"Thinking using {selected_provider}..."):
+            response = llm_selected.invoke(
                 f"Answer in 1-2 lines clearly: {question}"
             )
 
+        # st.write("Raw response:")
+        # st.write(response)
+
+        # st.write("Response type:")
+        # st.write(type(response))
+
         logger.debug(f"LLM response: {response}")
+
         st.success("Response:")
-        st.write(response)
+
+        # ChatOpenAI usually returns AIMessage, OllamaLLM usually returns string
+        if hasattr(response, "content"):
+            st.write(response.content)
+        else:
+            st.write(response)
+
     except Exception as e:
-        logger.error(f"Error occurred: {str(e)}")
-        st.error("Something went wrong. Check logs.")
+        logger.exception("Error occurred")
+        st.error("Something went wrong.")
+        st.exception(e)
 
 ## Run
-# 1. Tab 1 (PowerShell): 
-#    cd D:\dev\github\agentic-ai-langchaindemo
+#  cd D:\dev\github\agentic-ai-langchaindemo\s4_langchain-in-action
 # 
-#    # create venv (only first time)
-#    python -m venv venv311
+#  python -m streamlit run 2_streamlit_demo.py
+#  # python -m streamlit run 2_streamlit_demo.py --logger.level=debug
+#  # python -m streamlit run 2_streamlit_demo.py --logger.level=info
 # 
-#    # allow scripts (only per session)
-#    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-# 
-#    # activate venv
-#    venv311\Scripts\activate
-# 
-#    # install deps (only first time)
-#    pip install langchain langchain-openai langchain-ollama
-# 
-#    # start ollama server
-#    ollama serve
-# 
-# 2. Tab 2 (PowerShell):
-#    cd D:\dev\github\agentic-ai-langchaindemo
-#    venv311\Scripts\activate
-# 
-#    cd D:\dev\github\agentic-ai-langchaindemo\s4_langchain-in-action
-# 
-#    python -m streamlit run 2_streamlit_demo.py
-#    # python -m streamlit run 2_streamlit_demo.py --logger.level=debug
-#    # python -m streamlit run 2_streamlit_demo.py --logger.level=info
-# 
-# 3. UI:
+#  UI:
 #    http://localhost:8501/  
 
