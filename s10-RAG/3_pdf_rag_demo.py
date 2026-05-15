@@ -9,11 +9,9 @@ from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
 
-## OpenAI
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
-
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
 # =========================================================
 # 1. EMBEDDING MODEL (OLLAMA LOCAL)
@@ -22,23 +20,29 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 # Convert text into embeddings/vectors.
 #
 # Embeddings capture semantic meaning.
-# Similar meaning -> vectors become closer together.
+# Similar meaning -> vectors become closer together
 #
 # Example:
-# "Artificial Intelligence"
+# "I love Java"
 # -> [0.123, -0.553, 0.991, ...]
 
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
+# OpenAI cloud embedding model
+openai_embeddings_cloud = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=openai_api_key
+)
 
-# Optional local LLM
-# llm = ChatOllama(model="tinyllama")
+# Ollama local embedding model
+ollama_embeddings_local = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
 
 # =========================================================
 # 2. LLM (OLLAMA CLOUD)
 # =========================================================
 # Purpose:
-# Generate final human-readable answers.
+# Generate final natural-language answers.
 #
 # Embedding model:
 #   Understand/search text
@@ -46,15 +50,22 @@ embeddings = OllamaEmbeddings(model="nomic-embed-text")
 # LLM:
 #   Generate final answer
 
-# Use Ollama local embeddings instead (because getting 401 unauthorized in this setup/account)
-# embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="https://ollama.com", headers={"Authorization":f"Bearer {os.environ.get('OLLAMA_API_KEY')}"})  
-llm = ChatOllama(
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 
@@ -97,8 +108,9 @@ document = PyPDFLoader(
 #
 # chunk_overlap preserves continuity between chunks.
 
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
-                                              chunk_overlap=200)
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200)
 chunks = text_splitter.split_documents(document)
 
 
@@ -127,7 +139,23 @@ chunks = text_splitter.split_documents(document)
 # may match:
 # "neural networks"
 
-vector_store = Chroma.from_documents(chunks, embeddings)
+# Vector store. Stores embeddings for similarity search
+persist_directory = "chroma_db_openai"
+if os.path.exists(persist_directory) and os.listdir(persist_directory):
+    # load existing saved Chroma DB from disk
+    print("Loading existing Chroma DB...")
+    vector_store = Chroma(
+        embedding_function=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
+else:
+    # create embeddings from documents and save them to disk
+    print("Creating new Chroma DB...")
+    vector_store = Chroma.from_documents(
+        documents=chunks,                                    # List of documents to add to the VectorStore
+        embedding=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
 
 # =========================================================
 # 6. CREATE RETRIEVER
@@ -206,7 +234,7 @@ prompt_template = ChatPromptTemplate.from_messages(
 # Question:
 # What improved model accuracy?
 
-qa_chain = create_stuff_documents_chain(llm, prompt_template)
+qa_chain = create_stuff_documents_chain(llm_openai_cloud, prompt_template)
 
 
 # =========================================================

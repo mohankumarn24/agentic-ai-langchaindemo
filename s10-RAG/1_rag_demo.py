@@ -1,5 +1,9 @@
 import os
 
+from typing import Tuple, Union
+from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
@@ -8,10 +12,9 @@ from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 
-## OpenAI
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
 # =========================================================
 # 1. EMBEDDING MODEL (using Ollama local)
@@ -20,13 +23,17 @@ from langchain_ollama import OllamaEmbeddings, ChatOllama
 # Embedding model converts text into vectors (embeddings)
 # These vectors are used for semantic search
 # Embeddings capture semantic meaning. Similar meaning → vectors close together
-#
-# Example:
-# "I love Java" -> [0.123, -0.553, 0.991, ...] 
-# These numbers are called Embeddings
 
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
-# llm = ChatOllama(model="tinyllama")                        # Works well, but use Ollama cloud llm instead to avoid cpu stress
+# OpenAI cloud embedding model
+openai_embeddings_cloud = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=openai_api_key
+)
+
+# Ollama local embedding model
+ollama_embeddings_local = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
 
 # =========================================================
@@ -35,14 +42,22 @@ embeddings = OllamaEmbeddings(model="nomic-embed-text")
 # =========================================================
 # LLM generates the final answer using retrieved context
 
-# embeddings = OllamaEmbeddings(model="nomic-embed-text")    # Use Ollama local embeddings instead (because getting 401 unauthorized in this setup/account)
-llm = ChatOllama(
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
+
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
-    headers={                                                # Adds API key to request headers. Ex: Authorization: Bearer xxxxx
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+    headers={
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 
@@ -78,25 +93,23 @@ chunks = text_splitter.split_documents(document)
 # Normal DB: SELECT * WHERE id=5
 # Vector DB: Find vectors semantically similar to: "battery backup"
 
-vector_store = Chroma.from_documents(chunks, embeddings)    # Vector database. Stores embeddings for similarity search
-
-# persist_directory saves the vector DB locally. So embeddings are not recreated every time.
-
-# PERSIST_DIR = "./chroma_db"
-# 
-# if os.path.exists(PERSIST_DIR):
-#     vector_store = Chroma(
-#         persist_directory=PERSIST_DIR,
-#         embedding_function=embeddings
-#     )
-# else:
-#     vector_store = Chroma.from_documents(
-#         documents=chunks,
-#         embedding=embeddings,
-#         persist_directory=PERSIST_DIR
-#     )
-
-
+# Vector store. Stores embeddings for similarity search
+persist_directory = "chroma_db_openai"
+if os.path.exists(persist_directory) and os.listdir(persist_directory):
+    # load existing saved Chroma DB from disk
+    print("Loading existing Chroma DB...")
+    vector_store = Chroma(
+        embedding_function=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
+else:
+    # create embeddings from documents and save them to disk
+    print("Creating new Chroma DB...")
+    vector_store = Chroma.from_documents(
+        documents=chunks,                                    # List of documents to add to the VectorStore
+        embedding=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
 
 # =========================================================
 # 6. CREATE RETRIEVER
@@ -118,7 +131,8 @@ vector_store = Chroma.from_documents(chunks, embeddings)    # Vector database. S
 #    "Supports fast charging"
 # ]
 
-retriever = vector_store.as_retriever()                     # Create a retriever object that can (do semantic) search this vector database later
+# Currently using persistent DB
+retriever = vector_store.as_retriever()             # Create a retriever object that can (do semantic) search this vector database later               
 
 
 # =========================================================
@@ -191,7 +205,28 @@ prompt_template = ChatPromptTemplate.from_messages(
 #   def qa_chain(question, docs):
 #       prompt = build_prompt(question, docs)
 #       return llm(prompt)
-qa_chain = create_stuff_documents_chain(llm, prompt_template)
+
+# helper function
+def select_llm_provider() -> Tuple[str, Union[ChatOpenAI, ChatOllama]]:
+    print("Choose LLM provider:")
+    print("1. OpenAI Cloud")
+    print("2. Ollama Cloud")
+
+    choice = input("Enter choice [1/2]: ").strip()
+
+    if choice == "1":
+        print("Selected LLM: OpenAI Cloud")
+        return "OpenAI Cloud", llm_openai_cloud
+
+    if choice == "2":
+        print("Selected LLM: Ollama Cloud")
+        return "Ollama Cloud", llm_ollama_cloud
+
+    print("Invalid choice. Defaulting to Ollama Cloud.")
+    return "Ollama Cloud", llm_ollama_cloud
+
+selected_provider, llm_selected = select_llm_provider()
+qa_chain = create_stuff_documents_chain(llm_selected, prompt_template)
 
 
 # =========================================================

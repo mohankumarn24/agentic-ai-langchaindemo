@@ -16,10 +16,9 @@ from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 
-## OpenAI
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-# llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
 # =========================================================
 # 1. EMBEDDING MODEL (OLLAMA LOCAL)
@@ -34,41 +33,17 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 # "I love Java"
 # -> [0.123, -0.553, 0.991, ...]
 
-## TODO: Temporary fix by caching to avoid cpu stress
-# Issue occurs only if we use streamlit
-@st.cache_resource
-def create_retriever():
-    embeddings = OllamaEmbeddings(
-        model="nomic-embed-text"
-    )
+# OpenAI cloud embedding model
+openai_embeddings_cloud = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=openai_api_key
+)
 
-    document = TextLoader(
-        "product-data.txt",
-        encoding="utf-8"
-    ).load()
+# Ollama local embedding model
+ollama_embeddings_local = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-
-    chunks = text_splitter.split_documents(document)
-
-    vector_store = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings
-    )
-
-    retriever = vector_store.as_retriever(
-        search_kwargs={"k": 3}
-    )
-
-    return retriever
-
-retriever = create_retriever()
-
-# Optional local LLM
-# llm = ChatOllama(model="tinyllama")
 
 # =========================================================
 # 2. LLM (OLLAMA CLOUD)
@@ -82,29 +57,99 @@ retriever = create_retriever()
 # LLM:
 #   Generate final answer
 
-# Below code throws getting 401 unauthorized in this setup/account
-# embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="https://ollama.com", headers={"Authorization":f"Bearer {os.environ.get('OLLAMA_API_KEY')}"})   
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
 
-llm = ChatOllama(
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 # =========================================================
-# 3 to 6
-# Commented to avoid cpu stress. Streamlit rebuilds embeddings and Chroma again for each input. 
-# So, cache it as shown in step 1
+# 3. LOAD DOCUMENT
 # =========================================================
-# embeddings = OllamaEmbeddings(model="nomic-embed-text")
-# document = TextLoader("product-data.txt", encoding="utf-8").load()
-# text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-# chunks = text_splitter.split_documents(document)
-# vector_store = Chroma.from_documents(chunks, embeddings)
-# retriever = vector_store.as_retriever()
+document = TextLoader(
+    "product-data.txt", 
+    encoding="utf-8"
+).load()
+
+
+# =========================================================
+# 4. SPLIT DOCUMENT INTO CHUNKS
+# =========================================================
+# Large documents are split into smaller chunks
+# chunk_overlap keeps some context between chunks
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200
+)
+chunks = text_splitter.split_documents(document)
+
+
+# =========================================================
+# 5. CREATE VECTOR DATABASE FOR SEMANTIC SEARCH
+# =========================================================
+# Chroma stores embeddings and allows semantic search
+# 
+# Internally:
+# chunk -> embedding vector -> store in Chroma
+#
+# Example:
+# "Battery lasts 10 hours" -> [0.21, -0.88, ...]
+# Normal DB: SELECT * WHERE id=5
+# Vector DB: Find vectors semantically similar to: "battery backup"
+
+# Vector store. Stores embeddings for similarity search
+persist_directory = "chroma_db_openai"
+if os.path.exists(persist_directory) and os.listdir(persist_directory):
+    # load existing saved Chroma DB from disk
+    print("Loading existing Chroma DB...")
+    vector_store = Chroma(
+        embedding_function=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
+else:
+    # create embeddings from documents and save them to disk
+    print("Creating new Chroma DB...")
+    vector_store = Chroma.from_documents(
+        documents=chunks,                                    # List of documents to add to the VectorStore
+        embedding=openai_embeddings_cloud,
+        persist_directory=persist_directory
+    )
+
+# =========================================================
+# 6. CREATE RETRIEVER
+# =========================================================
+# Retriever performs semantic search on vector DB later
+#
+# Retriever searches the vector DB and returns relevant chunks
+# k=3 means return top 3 most relevant chunks.
+# 
+#   retriever = vector_store.as_retriever(
+#       search_kwargs={"k": 3}
+#   )
+#
+# Question -> Convert to embedding -> Find relevant chunks from vector DB -> Return relevant chunks
+# Ex: "What is battery life?"
+# Retriever returns:
+# [
+#    "Battery lasts 10 hours",
+#    "Supports fast charging"
+# ]
+
+# Currently using persistent DB
+retriever = vector_store.as_retriever()             # Create a retriever object that can (do semantic) search this vector database later 
 
 # =========================================================
 # 7. HISTORY-AWARE RETRIEVER PROMPT
@@ -168,7 +213,7 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages(
 #   It does not generate the final answer.
 
 history_aware_retriever = create_history_aware_retriever(
-    llm,
+    llm_openai_cloud,
     retriever,
     contextualize_q_prompt,
 )
@@ -246,7 +291,7 @@ qa_prompt = ChatPromptTemplate.from_messages(
 #   qa_chain does not search Chroma/vector DB.
 #   Retrieval already happened before this chain runs
 
-qa_chain = create_stuff_documents_chain(llm, qa_prompt)                     # Stuff means - retrieved chunks are stuffed into prompt context, then sent to LLM
+qa_chain = create_stuff_documents_chain(llm_openai_cloud, qa_prompt)                     # Stuff means - retrieved chunks are stuffed into prompt context, then sent to LLM
 
 # =========================================================
 # 11. CREATE FULL RAG PIPELINE
@@ -577,17 +622,18 @@ session_id = st.session_state.session_id
     #   QA chain                    = answer generator
 
 if ask_button and question:
-    response = chain_with_history.invoke(
-        {
-            "input": question
-        },
-        {
-            "configurable":
-                {
-                    "session_id": session_id
-                }
-        }
-    )
+    with st.spinner(f"Thinking..."):
+        response = chain_with_history.invoke(
+            {
+                "input": question
+            },
+            {
+                "configurable":
+                    {
+                        "session_id": session_id
+                    }
+            }
+        )
 
     st.write(response["answer"])
 
