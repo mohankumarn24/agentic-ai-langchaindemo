@@ -21,27 +21,29 @@ set_debug(True)
 #     “Do I need to search Wikipedia or DuckDuckGo before answering?”
 # Then it calls tools, reads results, and gives the final answer.
 
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
 # ------------------------------
 # 1. LLM setup
 # ------------------------------
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
+# OpenAI cloud LLM
+llm_openai_cloud = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
 
-# Ollama LLM
-# llm = OllamaLLM(model="tinyllama")
-
-if not os.environ.get("OLLAMA_API_KEY"):
-    st.error("OLLAMA_API_KEY is missing.")
-    st.stop()
-
-llm = ChatOllama(
+# Ollama cloud LLM
+llm_ollama_cloud = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 # ---------------------------------
@@ -96,19 +98,36 @@ react_system_prompt = """
                       """
 
 # ------------------------------
-# 4. Create Agent (new v1 API)
+# 4. Streamlit UI
+# ------------------------------
+st.title("AI Agent (ReAct style - LangChain v1)")
+
+# Select LLM model
+selected_provider = st.selectbox(
+    "Choose LLM provider",
+    options=["OpenAI Cloud", "Ollama Cloud"],
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
+)
+
+# input fields
+task = st.text_input("Assign me a task")
+
+# Select LLM based on user selection
+if selected_provider == "OpenAI Cloud":
+    llm_selected = llm_openai_cloud
+else:
+    llm_selected = llm_ollama_cloud
+
+# ------------------------------
+# 5. Create Agent (new v1 API)
 # ------------------------------
 agent = create_agent(
-    model=llm,
+    model=llm_selected,
     tools=tools,
     system_prompt=react_system_prompt
 )
 
-# ------------------------------
-# 5. Streamlit UI
-# ------------------------------
-st.title("AI Agent (ReAct style - LangChain v1)")
-task = st.text_input("Assign me a task")
+## Generate
 
 ## Uncomment if you need to enable history
 # if "messages" not in st.session_state:

@@ -11,28 +11,28 @@ from langchain_ollama import ChatOllama
 
 set_debug(True)
 
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
+
 # ----------------------------------------
 # 1. LLM setup (gpt-4o for vision + tools)
 # ----------------------------------------
-## OpenAI cloud vision model
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# llm = ChatOpenAI(model="gpt-4o",api_key=OPENAI_API_KEY)
-
 # Vision model: must support images
-vision_llm = ChatOllama(model="llava")  # qwen3.5:4b
-
-# Agent model: must support tool calling (ReAct agent)
-if not os.environ.get("OLLAMA_API_KEY"):
-    st.error("OLLAMA_API_KEY is missing.")
-    st.stop()
+vision_llm = ChatOpenAI(
+    model="gpt-5-nano", 
+    api_key=openai_api_key, 
+    temperature=0                                           # Controls randomness: 0 = deterministic/focused, higher values = more creative/random
+)
     
 agent_llm = ChatOllama(
     model="gpt-oss:20b",
     base_url="https://ollama.com",
     headers={
-        "Authorization":
-            f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-    }
+        # Adds API key to request headers. Example: Authorization: Bearer xxxxx
+        "Authorization": f"Bearer {ollama_api_key}"
+    },
+    temperature=0
 )
 
 # -------------------------
@@ -126,13 +126,11 @@ if st.button("Ask") and uploaded_file and question:
         # First: use vision chain to get landmark name
         with st.spinner("Identifying landmark..."):
             image_b64, mime_type = encode_image(uploaded_file)
-            # TODO: Commented vision llm to avoid cpu spike
-            # vision_response = vision_chain.invoke({
-            #     "image": image_b64,
-            #     "mime_type": mime_type
-            # })
-            # landmark_name = vision_response.content.strip()
-            landmark_name = 'Taj Mahal' 
+            vision_response = vision_chain.invoke({
+                "image": image_b64,
+                "mime_type": mime_type
+            })
+            landmark_name = vision_response.content.strip()
 
         st.write("Detected landmark:", landmark_name)
 
@@ -174,10 +172,9 @@ if st.button("Ask") and uploaded_file and question:
 # http://localhost:8501/  
 
 ## Output:
-# TODO: landmark is hardcoded to 'Taj Mahal'
-#
 # Browse file: 
 #     D:\dev\github\agentic-ai-langchaindemo\s12_agents\statue_of_liberty.jpg
+#     D:\dev\github\agentic-ai-langchaindemo\s12_agents\taj_mahal.jpg
 #
 # Enter question: 
 #     Where is it located?
