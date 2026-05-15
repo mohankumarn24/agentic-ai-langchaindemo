@@ -38,27 +38,11 @@ chunks = text_splitter.split_documents(document)
 ###################################################################################################
 ## 1c Option 1. In-memory Chroma vector database
 # Store text chunks + embeddings in Chroma vector database.
-#
-# Chroma.from_documents does this internally:
-#  - Takes each text chunk
-#  - Uses "text-embedding-3-small" to convert chunk text into vectors/numbers
-#  - Stores original chunk text + vector in Chroma
-#  - Enables semantic similarity search
-#
+# 
 # This creates Chroma only in memory:
 # Program starts -> Embeddings are created -> Search works -> Program ends -> Vector DB is gone
-
-## In-memory Chroma flow
-# Program starts
-# -> Read document
-# -> Split document into chunks
-# -> Create embeddings for chunks
-# -> Store chunks + embeddings only in memory/RAM
-# -> Search works while program is running
-# -> Program ends
-# -> In-memory vector DB is deleted/lost
-# -> Next run creates embeddings again
-
+#
+#
 #   inmemory_chroma_db = Chroma.from_documents(
 #       documents=chunks,
 #       embedding=openai_embeddings_cloud
@@ -72,23 +56,6 @@ chunks = text_splitter.split_documents(document)
 # This creates a local folder named "chroma_db_openai" and stores the vector database there.
 #
 # Program starts -> Embeddings are created -> Saved inside chroma_db_openai folder -> Search works -> Program ends -> Vector DB remains saved
-#
-# Important:
-# Chroma.from_documents(...) creates embeddings for the provided documents.
-# To reuse an existing persistent DB without recreating document embeddings,
-# load it later using Chroma(persist_directory=..., embedding_function=...).
-
-## Persistent Chroma flow
-# Program starts
-# -> Read document
-# -> Split document into chunks
-# -> Create embeddings for chunks
-# -> Store chunks + embeddings in Chroma
-# -> Save vector DB to disk inside persist_directory
-# -> Search works while program is running
-# -> Program ends
-# -> Vector DB remains saved on disk
-# -> Later, the saved DB can be loaded instead of recreating document embeddings
 
 ## See Note (IMPORTANT -> to reduce pricing!!)
 persist_directory = "chroma_db_openai"
@@ -96,26 +63,17 @@ if os.path.exists(persist_directory) and os.listdir(persist_directory):
     # load existing saved Chroma DB from disk
     print("Loading existing Chroma DB...")
     persistent_chroma_db = Chroma(
-        persist_directory=persist_directory,
-        embedding_function=openai_embeddings_cloud
+        embedding_function=openai_embeddings_cloud,
+        persist_directory=persist_directory
     )
 else:
     # create embeddings from documents and save them to disk
     print("Creating new Chroma DB...")
     persistent_chroma_db = Chroma.from_documents(
-        documents=chunks,
+        documents=chunks,                                    # List of documents to add to the VectorStore
         embedding=openai_embeddings_cloud,
         persist_directory=persist_directory
     )
-
-## 1d. Create retriever/search engine
-# Retriever searches the selected vector database and returns relevant chunks.
-#
-# To limit number of returned chunks:
-# retriever = inmemory_chroma_db.as_retriever(
-#     search_kwargs={"k": 2}
-# )
-#
 
 # Currently using persistent DB
 retriever = persistent_chroma_db.as_retriever()
@@ -125,7 +83,7 @@ text = input("Enter the query: ")
 
 ## 2b. Semantic retrieval/search
 # Internally:
-#  - Converts user query into embedding/vector/numbers
+#  - Converts user query into embedding/vector/numbers by making api call to embedding model
 #  - Compares query vector with stored chunk vectors
 #  - Retrieves most similar chunks
 docs = retriever.invoke(text)
@@ -181,85 +139,59 @@ for doc in docs:
 
 
 
-## Note 1
-# Chroma has 2 common modes
-# 
-# 1. Create mode: Chroma.from_documents(...)
-#       persistent_chroma_db = Chroma.from_documents(
-#           documents=chunks,
-#           embedding=openai_embeddings_cloud,
-#           persist_directory="chroma_db_openai"
-#       )
-# 
-# This means:
-#       Create embeddings now and save them to disk
-# 
-# So every time this line runs, it does:
-#   job_listings.txt
-#       -> chunks
-#       -> call OpenAI embeddings API ($$$$)
-#       -> save vectors into chroma_db_openai
-# 
-# So it saves the DB, but it also recreates document embeddings when this code runs
+## Note
+## OpenAI Embedding Flow with Persistent Chroma DB
 #
-# 2. Load mode: Chroma(...)
-#       persistent_chroma_db = Chroma(
-#           persist_directory="chroma_db_openai",
-#           embedding_function=openai_embeddings_cloud
-#       )
-# 
-# This means:
-#   Load already saved embeddings from disk
-# 
-# It does not:
-#   - read your documents again
-#   - call OpenAI embeddings API again for old document chunks ($$$$)
-#   - split chunks again
-#   - recreate embeddings for old chunks
-# 
-# It only opens the already saved Chroma DB folder.
+# FIRST RUN / CREATE DB:
+# 1. Load document from file.
+# 2. Split document into chunks.
+# 3. Call OpenAI embedding model for each document chunk.
+# 4. Convert each chunk into an embedding/vector.
+# 5. Store original chunk text + embedding/vector in persistent Chroma DB.
+# 6. Save the Chroma DB inside "chroma_db_openai" folder.
 #
-# Note:
-# Even in load mode, the user query is still embedded at search time.
-# So OpenAI embedding API is still called for each search query.
-
-
-
-
-
-
-
-## Note 2
-# When is OpenAI embedding model called?
+# WHEN USER ASKS A QUESTION:
+# 1. Call OpenAI embedding model for the user question.
+# 2. Convert user question into an embedding/vector.
+# 3. Compare question embedding with document embeddings already stored in Chroma DB.
+# 4. Return the most semantically similar chunks.
 #
-# OpenAI embedding model is called whenever text must be converted into vectors.
+# SECOND RUN / LOAD EXISTING DB:
+# 1. Do not recreate embeddings for the same old document chunks.
+# 2. Load already saved document embeddings from "chroma_db_openai".
+# 3. Old document embeddings are reused from persistent DB.
 #
-# It is called in these cases:
-#
-# 1. Creating vector DB from documents:
-#       Chroma.from_documents(
-#           documents=chunks,
-#           embedding=openai_embeddings_cloud,
-#           persist_directory="chroma_db_openai"
-#       )
-#    -> Calls OpenAI embeddings API for all document chunks.
-#
-# 2. Adding new documents later:
-#       persistent_chroma_db.add_documents(new_chunks)
-#    -> Calls OpenAI embeddings API for the new document chunks.
-#
-# 3. Searching/querying:
-#       docs = retriever.invoke("spring boot job")
-#    -> Calls OpenAI embeddings API for the user query.
-#
-# It is NOT called for old document chunks when loading an existing DB:
-#       persistent_chroma_db = Chroma(
-#           persist_directory="chroma_db_openai",
-#           embedding_function=openai_embeddings_cloud
-#       )
-#    -> Loads saved vectors from disk.
-#    -> Does not recreate embeddings for old chunks.
+# WHEN USER ASKS A QUESTION AGAIN:
+# 1. Call OpenAI embedding model for the new user question.
+# 2. Convert user question into an embedding/vector.
+# 3. Compare question embedding with saved document embeddings in Chroma DB.
+# 4. Return the most semantically similar chunks.
 #
 # Simple rule:
-#   Text -> Vector = embedding model/API is called.
-#   Saved vector -> Loaded from disk = embedding model/API is not called.
+# - Document chunks are embedded only when creating/updating the DB.
+# - User questions are embedded every time the user searches.
+
+
+
+## When is persistent Chroma DB updated?
+#
+# Persistent DB is updated only when documents are written to it.
+#
+# DB is updated in these cases:
+# 1. Creating DB:
+#       Chroma.from_documents(...)
+#    -> Embeds document chunks and stores them in DB.
+#
+# 2. Adding new documents:
+#       persistent_chroma_db.add_documents(new_chunks)
+#    -> Embeds new chunks and stores them in DB.
+#
+# 3. Deleting/updating records manually:
+#       persistent_chroma_db.delete(ids=[...])
+#    -> Removes records from DB.
+#
+# DB is NOT updated when user asks a question:
+#       docs = retriever.invoke(user_question)
+#    -> Only embeds the question and searches existing vectors.
+#    -> Does not save the question.
+#    -> Does not modify saved document embeddings.
