@@ -4,35 +4,27 @@ import numpy as np
 from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
+
 ## Embedding Models
-# OpenAI cloud embedding api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
-
-# Ollama local embedding
 # Uses an embedding model to convert text into numerical vectors
-ollama_embeddings_local = OllamaEmbeddings(model="nomic-embed-text")
+# OpenAI cloud embedding model
+openai_embeddings_cloud = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=openai_api_key
+)
 
-# Ollama cloud embedding
-# 401 Unauthorized may mean the API key/account does not have permission for this endpoint/model.
-#
-# ollama_embeddings_cloud = OllamaEmbeddings(
-#     model="nomic-embed-text",
-#     base_url="https://ollama.com",
-#     client_kwargs={
-#         "headers": {
-#             "Authorization": f"Bearer {os.environ.get('OLLAMA_API_KEY')}"
-#         }
-#     }
-# )
-
-# print(os.environ.get("OLLAMA_API_KEY"))
+# Ollama local embedding model
+ollama_embeddings_local = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
 text1 = input("Enter first text     : ")
 text2 = input("Enter second text    : ")
-response1 = ollama_embeddings_local.embed_query(text1)
-response2 = ollama_embeddings_local.embed_query(text2)
+response1 = openai_embeddings_cloud.embed_query(text1)      # Using OpenAI embeddings
+response2 = openai_embeddings_cloud.embed_query(text2)      # Using OpenAI embeddings
 
 ## Dot product compares vectors directly, but larger vectors can give misleadingly high scores
 # similarity_score = np.dot(response1, response2)

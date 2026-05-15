@@ -3,15 +3,22 @@ import os
 from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 
-## Embedding Models
-# OpenAI cloud embedding api
-# export/setx OPENAI_API_KEY="your_key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=OPENAI_API_KEY)
+## API Keys
+openai_api_key = os.getenv("OPENAI_API_KEY")
+ollama_api_key = os.getenv("OLLAMA_API_KEY")
 
-# Ollama local embedding
+## Embedding Models
 # Uses an embedding model to convert text into numerical vectors
-ollama_embeddings_local  = OllamaEmbeddings(model="nomic-embed-text")
+# OpenAI cloud embedding model
+openai_embeddings_cloud = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=openai_api_key
+)
+
+# Ollama local embedding model
+ollama_embeddings_local = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
 # Ollama cloud embedding
 # This didn't work initially, so upgraded langchain-ollama:
@@ -53,7 +60,8 @@ ollama_embeddings_local  = OllamaEmbeddings(model="nomic-embed-text")
 
 ## Generate embedding
 text = input("Enter text: ")
-response = ollama_embeddings_local.embed_query(text)            # Converts one text string into one vector
+response = openai_embeddings_cloud.embed_query(text)            # Using OpenAI embeddings
+                                                                # Converts one text string into one vector
 print(response)                                                 # List of floating-point numbers representing semantic meaning.
 print("Vector size:", len(response))
 
@@ -69,7 +77,7 @@ print("Vector size:", len(response))
 # If running using Ollama Local:
 # ollama pull nomic-embed-text
 # 
-# If running using Ollama Cloud: (401 issue - permission issues after upgrade too!!)
+# If running using Ollama Cloud
 # pip install -U langchain-ollama
 # pip show langchain-ollama
 #
