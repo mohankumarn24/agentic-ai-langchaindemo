@@ -45,20 +45,20 @@ st.title("Ask anything")
 selected_provider = st.selectbox(
     "Choose LLM provider",
     options=["OpenAI Cloud", "Ollama Cloud"],
-    index=0                                                 # Default: 'OpenAI Cloud'. if 'index=1' -> 'Ollama Cloud'
+    index=0                                                 # Default: OpenAI Cloud. Use index=1 to default to Ollama Cloud
 )
 
+# input fields
 question = st.text_input("Enter question")
 
-ask_button = st.button("Ask")
-
-## Select LLM based on user selection
+# Select LLM based on user selection
 if selected_provider == "OpenAI Cloud":
     llm_selected = llm_openai_cloud
 else:
     llm_selected = llm_ollama_cloud
 
 ## Generate
+ask_button = st.button("Ask")
 if ask_button and question:
     logger.debug(f"Selected provider: {selected_provider}")
     logger.debug(f"Received question: {question}")
