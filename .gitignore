@@ -210,3 +210,4 @@ __marimo__/
 .idea
 venv311/
 chroma_db/
+chroma_db_openai/
