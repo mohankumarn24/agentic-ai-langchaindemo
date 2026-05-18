@@ -1,0 +1,7 @@
+streamlit
+langchain
+langchain-openai
+langchain-mcp-adapters
+wikipedia
+duckduckgo-search
+langgraph
