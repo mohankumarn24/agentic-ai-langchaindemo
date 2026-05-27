@@ -8,87 +8,92 @@ response = llm.invoke(prompt)
 # 2. Prompt Template
 #######################################################################
 prompt_template = PromptTemplate(
-    input_variables=["country", "no_of_paragraphs", "language"],
-    template="""
-    You are an expert in traditional cuisines.
+                    input_variables=["country", "no_of_paragraphs", "language"],
+                    template="""
+                    You are an expert in traditional cuisines.
 
-    If the country is fictional or non-existent, answer exactly:
-    I don't know.
+                    If the country is fictional or non-existent, answer exactly:
+                    I don't know.
 
-    Question:
-    What is the traditional cuisine of {country}?
+                    Question:
+                    What is the traditional cuisine of {country}?
 
-    Instructions:
-    - Answer in {no_of_paragraphs} short paragraphs.
-    - Use {language}.
-    - Keep the answer factual and concise.
-    """
-)
+                    Instructions:
+                    - Answer in {no_of_paragraphs} short paragraphs.
+                    - Use {language}.
+                    - Keep the answer factual and concise.
+                    """
+                )
 
 response = llm.invoke(
-    prompt_template.format(country=country,
-        no_of_paragraphs=no_of_paragraphs,
-        language=language)
-)
+                prompt_template.format(
+                    country=country,
+                    no_of_paragraphs=no_of_paragraphs,
+                    language=language)
+            )
                                     
 #######################################################################
 # 3a. LCEL
 #######################################################################
 prompt_template = PromptTemplate(
-    input_variables=["city", "month", "language", "budget"],
-    template="""
-    You are a helpful travel guide.
+                    input_variables=["city", "month", "language", "budget"],
+                    template="""
+                    You are a helpful travel guide.
 
-    Create a practical travel guide for {city} for someone visiting in {month}.
+                    Create a practical travel guide for {city} for someone visiting in {month}.
 
-    Include:
-    1. Must-visit attractions.
-    2. Local cuisine the traveler should try.
-    3. Useful phrases in {language}.
-    4. Tips for traveling on a {budget} budget.
+                    Include:
+                    1. Must-visit attractions.
+                    2. Local cuisine the traveler should try.
+                    3. Useful phrases in {language}.
+                    4. Tips for traveling on a {budget} budget.
 
-    Keep the answer clear, useful, and beginner-friendly.
-    """
-)
+                    Keep the answer clear, useful, and beginner-friendly.
+                    """
+                )
 
 chain = prompt_template | llm
 
-response = chain.invoke({
-    "city": city,
-    "month": month,
-    "language": language,
-    "budget": budget
-})                                    
+response = chain.invoke(
+                {
+                    "city": city,
+                    "month": month,
+                    "language": language,
+                    "budget": budget
+                }
+            )                                    
 
 
 # 3b. Sequential chain
 title_prompt = PromptTemplate(
-    input_variables=["topic"],
-    template="""
-    You are an experienced speech writer.
+                    input_variables=["topic"],
+                    template="""
+                    You are an experienced speech writer.
 
-    Craft an impactful title for a speech on the following topic:
-    {topic}
+                    Craft an impactful title for a speech on the following topic:
+                    {topic}
 
-    Answer exactly with one title.
-    """
-)
+                    Answer exactly with one title.
+                    """
+                )
 
 speech_prompt = PromptTemplate(
-    input_variables=["title"],
-    template="""
-    Write a powerful speech of around 350 words for the following title:
+                    input_variables=["title"],
+                    template="""
+                    Write a powerful speech of around 350 words for the following title:
 
-    {title}
-    """
-)
+                    {title}
+                    """
+                )
 
 first_chain = title_prompt | title_llm | StrOutputParser() | RunnableLambda(display_title_and_return_title)
 second_chain = speech_prompt | speech_llm | StrOutputParser()
 final_chain = first_chain | second_chain
-response = final_chain.invoke({
-    "topic": topic
-})
+response = final_chain.invoke(
+                {
+                    "topic": topic
+                }
+            )
 
 #######################################################################
 # 4. Agents
@@ -110,20 +115,23 @@ react_system_prompt = """
                       """
                       
 agent = create_agent(
-    model=llm,
-    tools=tools,
-    system_prompt=react_system_prompt
-)
+            model=llm,
+            tools=tools,
+            system_prompt=react_system_prompt
+        )
 
 task = st.text_input("Who is the current CEO of Microsoft?")
-result = agent.invoke({
-    "messages": [
-        {
-            "role": "user",                             
-            "content": task                                                         
-        }
-    ]
-})
+result = agent.invoke(
+            {
+                "messages": 
+                    [
+                        {
+                            "role": "user",                             
+                            "content": task                                                         
+                        }
+                    ]
+            }
+        )
 
 # | Role        | Meaning                   | Example                                      |
 # | ----------- | ------------------------- | -------------------------------------------- |
@@ -248,8 +256,24 @@ response = chain_with_history.invoke(                                           
 )
 
 #######################################################################
+# In Sections 6a, 6b, and 6c of your script:
+#  - MCP (Model Context Protocol) is acting as an open, standardized bridge between your LLM and your local tools.
+#  - Instead of hardcoding tools directly into LangChain's proprietary format, MCP separates your code into two distinct pieces: 
+#       -- Tool Server (which hosts your functions)
+#       -- MCP Client (which allows the LLM to discover and use them)
+
+# @mcp.tool(): The @mcp.tool() decorator exposes your custom wikipedia_search and ddg_search functions to the protocol.
+# The Transport Mechanism: 
+#  - When you run mcp.run(transport="streamable-http"), it spins up a local web server (usually on http://localhost:8000). 
+#  - This server constantly listens for requests and automatically broadcasts a JSON schema explaining what tools it has, what they do, and what parameters they require.
+ 
+# In summary: 
+#   - MCP turns your local Python functions into a plug-and-play microservice
+#   - Your agent dynamically connects to the server, auto-discovers what your tools can do, and calls them over HTTP or Standard I/O to get the job done
+
 # 6a. MCP
 mcp = FastMCP(name="Tool Server")
+
 
 # Register this function as an MCP tool
 @mcp.tool()
@@ -275,12 +299,27 @@ def ddg_search(query: str) -> str:
     except Exception as e:
         # Return error message if DuckDuckGo search fails
         return f"Error: {str(e)}"
-        
+     
 mcp.run(transport="streamable-http")
 # mcp.run(transport="stdio")
 
 
-# 6b. MCP
+## 6b. MCP
+# 'client code' (6b or 6c) connects an 'agent' to above 'MCP server' using two different communication protocols (transports):
+#  - Via HTTP (6b. MultiServerMCPClient)
+#         client_streamable = MultiServerMCPClient({"tools": {"url": "http://localhost:8000/mcp", "transport": "streamable-http"}})
+#         tools = asyncio.run(client_streamable.get_tools())
+#         agent = create_agent(llm, tools)
+#    What it's doing: 
+#       -- The client pings your running HTTP server, asks "What tools do you have?", 
+#          and downloads the definitions for 'wikipedia_search' and 'ddg_search' dynamically over the network.
+        
+#  - Via Subprocess/Standard I/O (6c. MultiServerMCPClient)
+#         client_stdio = MultiServerMCPClient({"tools": {"command": "python", "args": ["1_mcp_server.py"], "transport": "stdio"}})    
+#    What it's doing: 
+#       -- Instead of connecting over the web, this transport launches your server script (1_mcp_server.py) as a background command-line process. 
+#       -- It uses standard input/output (stdio) to pass text back and forth between the agent and the tools.  
+
 client_streamable = MultiServerMCPClient(
     {
         "tools": 
@@ -296,14 +335,14 @@ tools = asyncio.run(client_streamable.get_tools())
 
 agent = create_agent(llm, tools) 
 response = asyncio.run(
-    agent.ainvoke(
-        {
-            "messages": task
-        }
-    )
-)
+                agent.ainvoke(
+                    {
+                        "messages": task
+                    }
+                )
+            )
 
-# 6c. MCP
+## 6c. MCP
 client_stdio = MultiServerMCPClient(
     {
         "tools": 
