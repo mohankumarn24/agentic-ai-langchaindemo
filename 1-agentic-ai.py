@@ -96,64 +96,7 @@ response = final_chain.invoke(
             )
 
 #######################################################################
-# 4. Agents
-#######################################################################
-tools = load_tools(["wikipedia", "ddg-search"])
-tool_names = ", ".join([tool.name for tool in tools])                                       # "wikipedia, ddg-search"
-react_system_prompt = """
-                      You are a helpful ReAct-style AI agent.
-					  
-                      You have access to these tools:
-                      {tool_names}
-
-                      Use tools only when needed.
-                      Use Wikipedia for encyclopedia-style facts.
-                      Use search for current or web-based information.
-
-                      If you use a tool, base your final answer on the tool result.
-                      Give a clear final answer to the user.
-                      """
-                      
-agent = create_agent(
-            model=llm,
-            tools=tools,
-            system_prompt=react_system_prompt
-        )
-
-task = st.text_input("Who is the current CEO of Microsoft?")
-result = agent.invoke(
-            {
-                "messages": 
-                    [
-                        {
-                            "role": "user",                             
-                            "content": task                                                         
-                        }
-                    ]
-            }
-        )
-
-# | Role        | Meaning                   | Example                                      |
-# | ----------- | ------------------------- | -------------------------------------------- |
-# | `system`    | Instruction to the AI     | `"You are a helpful assistant"`              |
-# | `user`      | Human/user message        | `"Who is CEO of Microsoft?"`                 |
-# | `assistant` | AI’s previous reply       | `"Satya Nadella is CEO"`                     |
-# | `tool`      | Result returned by a tool | Search result, calculator output, API result |
-
-# messages = [
-#     {
-#         "role": "system",                                                                 # System instruction:
-#         "content": "You are a helpful assistant."                                         # You are a helpful assistant.
-#     },
-#     {
-#         "role": "user",                                                                   # User asks:
-#         "content": "Who is the current CEO of Microsoft?"                                 # Who is the current CEO of Microsoft?
-#     }
-# ]
-
-
-#######################################################################
-# 5. RAG with history - Retrieval-Augmented Generation
+# 4. RAG with history - Retrieval-Augmented Generation
 #######################################################################
 document = TextLoader("product-data.txt", encoding="utf-8").load()                          # Load text file as LangChain Document
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)          # Split large document into overlapping chunks
@@ -254,6 +197,62 @@ response = chain_with_history.invoke(                                           
             }
     }
 )
+
+#######################################################################
+# 5. Agents
+#######################################################################
+tools = load_tools(["wikipedia", "ddg-search"])
+tool_names = ", ".join([tool.name for tool in tools])                                       # "wikipedia, ddg-search"
+react_system_prompt = """
+                      You are a helpful ReAct-style AI agent.
+					  
+                      You have access to these tools:
+                      {tool_names}
+
+                      Use tools only when needed.
+                      Use Wikipedia for encyclopedia-style facts.
+                      Use search for current or web-based information.
+
+                      If you use a tool, base your final answer on the tool result.
+                      Give a clear final answer to the user.
+                      """
+                      
+agent = create_agent(
+            model=llm,
+            tools=tools,
+            system_prompt=react_system_prompt
+        )
+
+task = st.text_input("Who is the current CEO of Microsoft?")
+result = agent.invoke(
+            {
+                "messages": 
+                    [
+                        {
+                            "role": "user",                             
+                            "content": task                                                         
+                        }
+                    ]
+            }
+        )
+
+# | Role        | Meaning                   | Example                                      |
+# | ----------- | ------------------------- | -------------------------------------------- |
+# | `system`    | Instruction to the AI     | `"You are a helpful assistant"`              |
+# | `user`      | Human/user message        | `"Who is CEO of Microsoft?"`                 |
+# | `assistant` | AI’s previous reply       | `"Satya Nadella is CEO"`                     |
+# | `tool`      | Result returned by a tool | Search result, calculator output, API result |
+
+# messages = [
+#     {
+#         "role": "system",                                                                 # System instruction:
+#         "content": "You are a helpful assistant."                                         # You are a helpful assistant.
+#     },
+#     {
+#         "role": "user",                                                                   # User asks:
+#         "content": "Who is the current CEO of Microsoft?"                                 # Who is the current CEO of Microsoft?
+#     }
+# ]
 
 #######################################################################
 # In Sections 6a, 6b, and 6c of your script:
